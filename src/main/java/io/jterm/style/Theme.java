@@ -147,4 +147,44 @@ public record Theme(
         if (this == YELLOW_ON_RED) return "Yellow on Red";
         return "Custom";
     }
+
+    /**
+     * Canonical lowercase key for this theme (e.g. {@code "dark"},
+     * {@code "yellow_on_blue"}) — the form stored in preferences and
+     * accepted by {@link #fromName(String)}.
+     *
+     * @return the key of this theme, or {@code null} for custom themes
+     */
+    public String key() {
+        if (this == DARK) return "dark";
+        if (this == YELLOW_ON_BLUE) return "yellow_on_blue";
+        if (this == GREEN_ON_BLACK) return "green_on_black";
+        if (this == WHITE_ON_GREEN) return "white_on_green";
+        if (this == YELLOW_ON_RED) return "yellow_on_red";
+        return null;
+    }
+
+    /**
+     * Resolves a theme from a user-facing name or key. Accepts the display
+     * name (e.g. {@code "Yellow on Blue"}), the lowercase key (e.g.
+     * {@code "yellow_on_blue"}), any casing of either, and surrounding
+     * whitespace. Theme names come from user preferences, so lookups are
+     * lenient.
+     *
+     * @param name the theme name or key (may be null or blank)
+     * @return an Optional holding the matching built-in theme, or empty
+     *         if the name is null, blank, or does not match a built-in
+     */
+    public static java.util.Optional<Theme> fromName(String name) {
+        if (name == null) {
+            return java.util.Optional.empty();
+        }
+        String normalized = name.trim().toLowerCase().replace(' ', '_');
+        for (Theme t : BUILT_IN) {
+            if (t.key().equals(normalized) || t.name().toLowerCase().replace(' ', '_').equals(normalized)) {
+                return java.util.Optional.of(t);
+            }
+        }
+        return java.util.Optional.empty();
+    }
 }

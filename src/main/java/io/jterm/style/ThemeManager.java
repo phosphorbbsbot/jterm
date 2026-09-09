@@ -21,15 +21,25 @@ public final class ThemeManager {
     private static volatile Theme active = Theme.DARK;
     private static final CopyOnWriteArrayList<Consumer<Theme>> listeners = new CopyOnWriteArrayList<>();
 
+    /**
+     * Per-thread theme override. A session (e.g. one BBS user's connection)
+     * pins its own theme here so concurrent sessions can render with
+     * different themes; {@link #active()} prefers this over the global.
+     */
+    private static final ThreadLocal<Theme> threadOverride = new ThreadLocal<>();
+
     private ThemeManager() {} // utility class
 
     /**
-     * Returns the currently active theme.
+     * Returns the currently active theme for the calling thread: the
+     * thread's pinned theme if one is set (see
+     * {@link #setThreadTheme(Theme)}), otherwise the global active theme.
      *
-     * @return the active theme
+     * @return the active theme for this thread
      */
     public static Theme active() {
-        return active;
+        Theme override = threadOverride.get();
+        return override != null ? override : active;
     }
 
     /**
@@ -42,6 +52,30 @@ public final class ThemeManager {
         for (var listener : listeners) {
             listener.accept(theme);
         }
+    }
+
+    /**
+     * Pins a theme for the calling thread, shadowing the global active
+     * theme. Used by servers hosting multiple concurrent sessions (one
+     * thread per connection): each session renders with its own theme
+     * without affecting other users. Listeners are NOT fired — this is a
+     * thread-local view, not a global change. Call {@link
+     * #clearThreadTheme()} when the session ends (virtual threads should
+     * clear in a {@code finally} to avoid leaking the override across
+     * thread reuse).
+     *
+     * @param theme the theme this thread should render with
+     */
+    public static void setThreadTheme(Theme theme) {
+        threadOverride.set(theme);
+    }
+
+    /**
+     * Removes the calling thread's pinned theme (if any), restoring the
+     * global active theme for this thread.
+     */
+    public static void clearThreadTheme() {
+        threadOverride.remove();
     }
 
     /**

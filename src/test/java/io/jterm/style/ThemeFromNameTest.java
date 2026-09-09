@@ -41,8 +41,27 @@ class ThemeFromNameTest {
 
     @Test
     void unknownNameGivesEmptyOptional() {
-        assertTrue(Theme.fromName("cyberpunk").isEmpty(), "custom .phos theme names are not built-ins");
+        assertTrue(Theme.fromName("synthwave").isEmpty(), "truly unknown names give empty");
         assertTrue(Theme.fromName("").isEmpty());
         assertTrue(Theme.fromName(null).isEmpty());
     }
+
+    @Test
+    void resolvesClassicPcAndCyberpunk() {
+        assertSame(Theme.CLASSIC_PC, Theme.fromName("classic_pc").orElseThrow());
+        assertSame(Theme.CLASSIC_PC, Theme.fromName("Cyan on Blue").orElseThrow());
+        assertSame(Theme.CYBERPUNK, Theme.fromName("cyberpunk").orElseThrow());
+        assertSame(Theme.CYBERPUNK, Theme.fromName("Cyberpunk").orElseThrow());
+    }
+
+    @Test
+    void everyBuiltInHasDistinctKeyAndName() {
+        var keys = new java.util.HashSet<String>();
+        var names = new java.util.HashSet<String>();
+        for (Theme t : Theme.BUILT_IN) {
+            assertTrue(keys.add(t.key()), "duplicate key: " + t.key());
+            assertTrue(names.add(t.name()), "duplicate name: " + t.name());
+        }
+    }
+
 }

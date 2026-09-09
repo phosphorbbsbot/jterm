@@ -16,6 +16,8 @@ package io.jterm.style;
  *   <li>{@link #GREEN_ON_BLACK} — matrix-style green on black</li>
  *   <li>{@link #WHITE_ON_GREEN} — light green background with dark text</li>
  *   <li>{@link #YELLOW_ON_RED} — bright yellow/orange text on red background</li>
+ *   <li>{@link #CLASSIC_PC} — bright cyan on blue (Turbo Vision / PCBoard look)</li>
+ *   <li>{@link #CYBERPUNK} — neon magenta/cyan on near-black</li>
  * </ul>
  *
  * @param foreground      default text color
@@ -125,13 +127,47 @@ public record Theme(
             AnsiColor.RED                  // headerBg
     );
 
+    /** Classic PC BBS: bright cyan on blue (Turbo Vision / PCBoard look). */
+    public static final Theme CLASSIC_PC = new Theme(
+            AnsiColor.BRIGHT_CYAN,         // foreground
+            AnsiColor.BLUE,                // background
+            AnsiColor.BLUE,                // selectionFg
+            AnsiColor.BRIGHT_CYAN,         // selectionBg
+            AnsiColor.BLACK,               // focusFg
+            AnsiColor.BRIGHT_CYAN,         // focusBg
+            AnsiColor.BRIGHT_CYAN,         // border
+            AnsiColor.BRIGHT_WHITE,        // titleFg
+            AnsiColor.BLUE,                // titleBg
+            AnsiColor.BRIGHT_YELLOW,       // accent
+            AnsiColor.BRIGHT_WHITE,        // headerFg
+            AnsiColor.BLUE                 // headerBg
+    );
+
+    /** Cyberpunk: neon magenta/cyan on near-black. */
+    public static final Theme CYBERPUNK = new Theme(
+            AnsiColor.BRIGHT_MAGENTA,      // foreground
+            AnsiColor.BLACK,               // background
+            AnsiColor.BLACK,               // selectionFg
+            AnsiColor.BRIGHT_CYAN,         // selectionBg
+            AnsiColor.BRIGHT_CYAN,         // focusFg
+            AnsiColor.BLACK,               // focusBg
+            AnsiColor.BRIGHT_MAGENTA,      // border
+            AnsiColor.BRIGHT_CYAN,         // titleFg
+            AnsiColor.BLACK,               // titleBg
+            AnsiColor.BRIGHT_GREEN,        // accent
+            AnsiColor.BRIGHT_CYAN,         // headerFg
+            AnsiColor.BLACK                // headerBg
+    );
+
     /** All built-in themes in a list for cycling. */
     public static final Theme[] BUILT_IN = {
             Theme.DARK,
             Theme.YELLOW_ON_BLUE,
             Theme.GREEN_ON_BLACK,
             Theme.WHITE_ON_GREEN,
-            Theme.YELLOW_ON_RED
+            Theme.YELLOW_ON_RED,
+            Theme.CLASSIC_PC,
+            Theme.CYBERPUNK
     };
 
     /**
@@ -145,6 +181,8 @@ public record Theme(
         if (this == GREEN_ON_BLACK) return "Green on Black";
         if (this == WHITE_ON_GREEN) return "White on Green";
         if (this == YELLOW_ON_RED) return "Yellow on Red";
+        if (this == CLASSIC_PC) return "Cyan on Blue";
+        if (this == CYBERPUNK) return "Cyberpunk";
         return "Custom";
     }
 
@@ -161,6 +199,8 @@ public record Theme(
         if (this == GREEN_ON_BLACK) return "green_on_black";
         if (this == WHITE_ON_GREEN) return "white_on_green";
         if (this == YELLOW_ON_RED) return "yellow_on_red";
+        if (this == CLASSIC_PC) return "classic_pc";
+        if (this == CYBERPUNK) return "cyberpunk";
         return null;
     }
 

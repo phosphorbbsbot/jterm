@@ -55,6 +55,14 @@ class ThemeFromNameTest {
     }
 
     @Test
+    void resolvesAmberAndPaperThemes() {
+        assertSame(Theme.AMBER_ON_BLACK, Theme.fromName("amber_on_black").orElseThrow());
+        assertSame(Theme.AMBER_ON_BLACK, Theme.fromName("Amber on Black").orElseThrow());
+        assertSame(Theme.PAPER, Theme.fromName("paper").orElseThrow());
+        assertSame(Theme.PAPER, Theme.fromName("Paper White").orElseThrow());
+    }
+
+    @Test
     void everyBuiltInHasDistinctKeyAndName() {
         var keys = new java.util.HashSet<String>();
         var names = new java.util.HashSet<String>();

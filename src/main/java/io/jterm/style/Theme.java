@@ -18,6 +18,8 @@ package io.jterm.style;
  *   <li>{@link #YELLOW_ON_RED} — bright yellow/orange text on red background</li>
  *   <li>{@link #CLASSIC_PC} — bright cyan on blue (Turbo Vision / PCBoard look)</li>
  *   <li>{@link #CYBERPUNK} — neon magenta/cyan on near-black</li>
+ *   <li>{@link #AMBER_ON_BLACK} — amber CRT (P3 phosphor) look, twin of green-on-black</li>
+ *   <li>{@link #PAPER} — black on white, for daylight/high ambient light</li>
  * </ul>
  *
  * @param foreground      default text color
@@ -159,6 +161,38 @@ public record Theme(
             AnsiColor.BLACK                // headerBg
     );
 
+    /** Amber CRT: bright yellow reads as amber (P3 phosphor) on black. Twin of the green-on-black terminal look. */
+    public static final Theme AMBER_ON_BLACK = new Theme(
+            AnsiColor.BRIGHT_YELLOW,       // foreground
+            AnsiColor.BLACK,               // background
+            AnsiColor.BLACK,               // selectionFg
+            AnsiColor.BRIGHT_YELLOW,       // selectionBg
+            AnsiColor.BLACK,               // focusFg
+            AnsiColor.BRIGHT_YELLOW,       // focusBg
+            AnsiColor.YELLOW,              // border
+            AnsiColor.BRIGHT_YELLOW,       // titleFg
+            AnsiColor.BLACK,               // titleBg
+            AnsiColor.BRIGHT_GREEN,        // accent
+            AnsiColor.BRIGHT_YELLOW,       // headerFg
+            AnsiColor.BLACK                // headerBg
+    );
+
+    /** Paper: black on white — the daylight/high-ambient-light extreme. */
+    public static final Theme PAPER = new Theme(
+            AnsiColor.BLACK,               // foreground
+            AnsiColor.WHITE,               // background
+            AnsiColor.WHITE,               // selectionFg
+            AnsiColor.BRIGHT_BLACK,        // selectionBg
+            AnsiColor.WHITE,               // focusFg
+            AnsiColor.BLACK,               // focusBg
+            AnsiColor.BRIGHT_BLACK,        // border
+            AnsiColor.BLACK,               // titleFg
+            AnsiColor.WHITE,               // titleBg
+            AnsiColor.BLUE,                // accent
+            AnsiColor.BLACK,               // headerFg
+            AnsiColor.BRIGHT_BLACK         // headerBg
+    );
+
     /** All built-in themes in a list for cycling. */
     public static final Theme[] BUILT_IN = {
             Theme.DARK,
@@ -167,7 +201,9 @@ public record Theme(
             Theme.WHITE_ON_GREEN,
             Theme.YELLOW_ON_RED,
             Theme.CLASSIC_PC,
-            Theme.CYBERPUNK
+            Theme.CYBERPUNK,
+            Theme.AMBER_ON_BLACK,
+            Theme.PAPER
     };
 
     /**
@@ -183,6 +219,8 @@ public record Theme(
         if (this == YELLOW_ON_RED) return "Yellow on Red";
         if (this == CLASSIC_PC) return "Cyan on Blue";
         if (this == CYBERPUNK) return "Cyberpunk";
+        if (this == AMBER_ON_BLACK) return "Amber on Black";
+        if (this == PAPER) return "Paper White";
         return "Custom";
     }
 
@@ -201,6 +239,8 @@ public record Theme(
         if (this == YELLOW_ON_RED) return "yellow_on_red";
         if (this == CLASSIC_PC) return "classic_pc";
         if (this == CYBERPUNK) return "cyberpunk";
+        if (this == AMBER_ON_BLACK) return "amber_on_black";
+        if (this == PAPER) return "paper";
         return null;
     }
 

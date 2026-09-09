@@ -439,6 +439,61 @@ class DefaultTextGUITest {
         assertTrue(gui.isRunning(), "escape should not stop the GUI");
     }
 
+    // ===== Ctrl-L full repaint (client-driven redraw contract) =====
+
+    @Test
+    @DisplayName("Ctrl-L marks the next render as a COMPLETE refresh (full frame)")
+    void ctrlLForcesCompleteRefresh() throws IOException {
+        var terminal = new MockTerminal(new TerminalSize(80, 24));
+        var screen = new DefaultScreen(terminal);
+        // Arm the terminal writer: refresh() copies buffers without writing
+        // to the terminal until the screen is started.
+        screen.startScreen();
+        var gui = new DefaultTextGUI(screen);
+        var window = new WindowImpl("Test");
+        gui.addWindow(window);
+
+        // Baseline render so the delta engine has a front buffer, then wipe
+        // the captured output so we only observe what the NEXT updateScreen
+        // emits.
+        gui.updateScreen();
+        terminal.clearOutput();
+
+        // Ctrl-L (form feed): the universal "redraw the screen" keystroke.
+        gui.processInput(new KeyStroke(KeyType.CHARACTER, 'L', true, false, false));
+        gui.updateScreen();
+
+        // A COMPLETE refresh is bracketed by autowrap disable/enable (and
+        // repaints every cell); a DELTA refresh emits neither marker.
+        String out = terminal.getOutput();
+        assertTrue(out.contains("\u001B[?7l") && out.contains("\u001B[?7h"),
+                "Ctrl-L must force a full-frame (COMPLETE) refresh, output was: "
+                        + out.replace("\u001B", "ESC"));
+    }
+
+    @Test
+    @DisplayName("Ctrl-L still reaches the active window (screens keep their own 'L' handling)")
+    void ctrlLAlsoReachesActiveWindow() throws IOException {
+        var screen = new DefaultScreen(new MockTerminal(new TerminalSize(80, 24)));
+        var gui = new DefaultTextGUI(screen);
+
+        var sawCtrlL = new boolean[1];
+        var window = new WindowImpl("Test") {
+            @Override
+            public boolean handleKeyStroke(KeyStroke ks) {
+                if (ks.type() == KeyType.CHARACTER && ks.ctrl() && ks.character() == 'L') {
+                    sawCtrlL[0] = true;
+                    return true;
+                }
+                return super.handleKeyStroke(ks);
+            }
+        };
+        gui.addWindow(window);
+
+        gui.processInput(new KeyStroke(KeyType.CHARACTER, 'L', true, false, false));
+        assertTrue(sawCtrlL[0], "the active window must still see the Ctrl-L keystroke");
+    }
+
     // ===== Modal windows =====
 
     @Test

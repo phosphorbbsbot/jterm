@@ -221,6 +221,17 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
                 // (detach/logout), rather than killing the event loop. The window
                 // hierarchy (MenuWindow, ContentScreen) decides what to do.
             }
+            if (ks.type() == KeyType.CHARACTER && ks.ctrl() && ks.character() == 'L') {
+                // Ctrl-L: the classic "redraw the screen" keystroke. Thin
+                // clients (e.g. the iOS app after a foreground restore) send
+                // it to ask for a full frame — the delta engine's partial
+                // refresh can't repaint a client whose canvas was wiped
+                // externally. The next updateScreen() emits a COMPLETE
+                // refresh; the keystroke then falls through to the window
+                // dispatch below so screens keep their own 'L' handling.
+                forceComplete = true;
+                needsRefresh = true;
+            }
             if (ks.type() == KeyType.ESCAPE) {
                 // Don't quit on Escape in BBS mode — let screens handle it
             }

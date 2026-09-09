@@ -60,17 +60,30 @@ public class AnimatedBordersDemo {
         window.open(gui);
         gui.updateScreen();
 
+        boolean running = true;
         try {
-            while (gui.isRunning()) {
-                boolean hadInput = gui.processInput();
-                // Drain any buffered input
+            while (running && gui.isRunning()) {
+                // Drain buffered input OURSELVES first (mirrors SpriteDemo):
+                // gui.processInput() pulls from the terminal and dispatches to
+                // the window, and the window marks 'q' unconsumed — the GUI
+                // framework then ignores it, so the quit must be handled here
+                // before processInput() ever sees the key. Without this a
+                // headless run hangs on the next blocking poll.
+                boolean hadInput = false;
                 while (true) {
                     var ks = screen instanceof DefaultScreen ds
                             ? ds.getTerminal().pollInput().orElse(null)
                             : null;
                     if (ks == null) break;
+                    hadInput = true;
+                    if (ks.type() == KeyType.CHARACTER
+                            && (ks.character() == 'q' || ks.character() == 'Q')) {
+                        running = false;
+                        break;
+                    }
                     gui.processInput(ks);
                 }
+                if (!running) break;
                 gui.updateScreen();
                 if (!hadInput) {
                     Thread.yield();

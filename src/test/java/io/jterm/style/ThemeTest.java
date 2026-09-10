@@ -50,8 +50,8 @@ class ThemeTest {
     }
 
     @Test
-    void builtInThemesHasFiveEntries() {
-        assertEquals(5, Theme.BUILT_IN.length);
+    void builtInThemesHasNineEntries() {
+        assertEquals(9, Theme.BUILT_IN.length);
     }
 
     @Test
@@ -98,6 +98,10 @@ class ThemeTest {
         assertEquals(Theme.GREEN_ON_BLACK, ThemeManager.cycle());
         assertEquals(Theme.WHITE_ON_GREEN, ThemeManager.cycle());
         assertEquals(Theme.YELLOW_ON_RED, ThemeManager.cycle());
+        assertEquals(Theme.CLASSIC_PC, ThemeManager.cycle());
+        assertEquals(Theme.CYBERPUNK, ThemeManager.cycle());
+        assertEquals(Theme.AMBER_ON_BLACK, ThemeManager.cycle());
+        assertEquals(Theme.PAPER, ThemeManager.cycle());
         assertEquals(Theme.DARK, ThemeManager.cycle()); // wraps around
         // Reset
         ThemeManager.setActive(Theme.DARK);

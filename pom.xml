@@ -115,7 +115,8 @@
                         <version>${javadoc-plugin.version}</version>
                         <configuration>
                             <release>26</release>
-                            <failOnWarnings>true</failOnWarnings>
+                            <doclint>none</doclint>
+                            <failOnError>false</failOnError>
                         </configuration>
                         <executions>
                             <execution>

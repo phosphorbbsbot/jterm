@@ -129,10 +129,13 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
                         <version>${gpg-plugin.version}</version>
+                        <configuration>
+                            <gpg.keyname>33FFE54F669FD6ED3B8ECCD160136B219784162C</gpg.keyname>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
-                                <phase>verify</phase>
+                                <phase>package</phase>
                                 <goals><goal>sign</goal></goals>
                             </execution>
                         </executions>

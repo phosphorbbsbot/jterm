@@ -89,6 +89,18 @@ public class AbstractWindow implements Window {
         this.hints.addAll(hints);
     }
 
+    @Override
+    public TerminalSize getPreferredSize() {
+        if (hints.contains(WindowHint.FULLSCREEN) || hints.contains(WindowHint.NO_DECORATIONS)) {
+            return getSize();
+        }
+        var content = contents.getPreferredSize();
+        boolean decorated = !hints.contains(WindowHint.FIT_TERMINAL_WINDOW);
+        int extraCols = hints.contains(WindowHint.FIT_TERMINAL_WINDOW) ? 0 : 2;
+        int extraRows = title == null || title.isEmpty() ? 2 : 1 + titleBarHeight;
+        return new TerminalSize(content.columns() + extraCols, content.rows() + extraRows);
+    }
+
     /**
      * Return the window hint flags.
      *

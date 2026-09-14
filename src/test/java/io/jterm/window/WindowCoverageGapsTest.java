@@ -21,7 +21,10 @@ class WindowCoverageGapsTest {
     void windowDefaultGetPreferredSizeReturnsSize() {
         Window window = new WindowImpl("test");
         window.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 10));
-        assertEquals(window.getSize(), window.getPreferredSize());
+        // AbstractWindow now derives preferred size from contents (+decoration
+        // insets); with an empty contents panel (1x1) and title bar the
+        // reported preferred size is 3x3 regardless of the current bounds.
+        assertEquals(new TerminalSize(3, 3), window.getPreferredSize());
     }
 
     @Test

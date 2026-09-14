@@ -559,4 +559,42 @@ class AbstractWindowTest {
             assertSame(c, w.getFocusedComponent());
         }
     }
+
+    @Nested
+    @DisplayName("preferred size")
+    class PreferredSizeTests {
+
+        @Test
+        @DisplayName("getPreferredSize derives from contents, not the 40x20 default size")
+        void getPreferredSizeDerivesFromContents() {
+            var w = new TestWindow("win");
+            // Default size is 40x20; a 60-column label must be reported so
+            // CENTERED windows size to their content instead of clipping.
+            w.getContents().setLayoutManager(new io.jterm.layout.LinearLayout(io.jterm.layout.LinearLayout.Direction.VERTICAL, 0));
+            w.getContents().addComponent(new Label("x".repeat(60)));
+            assertEquals(60, w.getPreferredSize().columns() - 2,
+                    "content width (window pref minus insets) must follow the widest content line");
+        }
+
+        @Test
+        @DisplayName("getPreferredSize accounts for decorations (border/title insets)")
+        void getPreferredSizeAccountsForDecorations() {
+            var w = new TestWindow("win");
+            w.getContents().setLayoutManager(new io.jterm.layout.LinearLayout(io.jterm.layout.LinearLayout.Direction.VERTICAL, 0));
+            w.getContents().addComponent(new Label("x".repeat(30)));
+            // contents needs 30 columns; window adds 1 left + 1 right inset
+            assertEquals(32, w.getPreferredSize().columns(),
+                    "preferred width must include decoration insets");
+        }
+
+        @Test
+        @DisplayName("getPreferredSize respects explicit setPreferredSize override")
+        void getPreferredSizeRespectsOverride() {
+            var w = new TestWindow();
+            // Override on the root contents panel propagates through the
+            // window's decoration math (77+2 cols, 13+2 rows).
+            w.getContents().setPreferredSizeOverride(new TerminalSize(77, 13));
+            assertEquals(new TerminalSize(79, 15), w.getPreferredSize());
+        }
+    }
 }

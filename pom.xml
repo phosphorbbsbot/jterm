@@ -32,9 +32,9 @@
     </developers>
 
     <scm>
-        <connection>scm:git:https://github.com/jterm-io/jterm.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/jterm-io/jterm.git</developerConnection>
-        <url>https://github.com/jterm-io/jterm</url>
+        <connection>scm:git:https://github.com/phosphorbbsbot/jterm.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/phosphorbbsbot/jterm.git</developerConnection>
+        <url>https://github.com/phosphorbbsbot/jterm</url>
         <tag>HEAD</tag>
     </scm>
 

@@ -345,15 +345,16 @@ public class SocketTerminal implements Terminal {
 
     private void readLoop() {
         try {
-            while (!inputClosed && !Thread.currentThread().isInterrupted()) {
+            while (!inputClosed) {
                 var currentDecoder = decoder;
                 var currentIn = in;
                 var ks = currentDecoder != null ? currentDecoder.poll() : java.util.Optional.<KeyStroke>empty();
                 if (ks.isPresent()) {
                     // Put WITHOUT honoring interrupts: an interrupt racing a
                     // put() would orphan a decoded keystroke across an
-                    // attach() swap (lost key press). Interrupt status is
-                    // re-asserted so the loop still notices shutdown.
+                    // attach() swap (lost key press) AND re-asserting the
+                    // status here would kill this loop via its while-condition.
+                    // inputClosed (checked each spin) is the shutdown signal.
                     boolean interrupted = false;
                     while (true) {
                         try {

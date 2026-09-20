@@ -192,6 +192,18 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     }
 
     /**
+     * Requests that the NEXT screen update be a COMPLETE repaint (full
+     * redraw with cursor homing) rather than a cell delta. Use when a
+     * structural screen change must be unmistakable to thin clients whose
+     * delta application can desync (e.g. a modal popup over an animated
+     * background).
+     */
+    public synchronized void forceCompleteRefresh() {
+        needsRefresh = true;
+        forceComplete = true;
+    }
+
+    /**
      * Process one input event from the terminal.
      *
      * @return true if input was processed, false if none available

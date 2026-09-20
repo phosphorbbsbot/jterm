@@ -344,9 +344,19 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     public void runEventLoop() throws IOException {
         needsRefresh = true;
         while (running) {
-            boolean hadInput = processInput();
-            checkAutoRefresh();
-            updateScreen();
+            boolean hadInput = false;
+            try {
+                hadInput = processInput();
+                checkAutoRefresh();
+                updateScreen();
+            } catch (RuntimeException | IOException e) {
+                // A fault in a key handler or a paint must never kill the loop:
+                // the loop dying tears the session down (clients see a blank
+                // terminal). Log and keep serving input.
+                java.util.logging.Logger.getLogger(DefaultTextGUI.class.getName())
+                        .log(java.util.logging.Level.SEVERE,
+                                "[GUI-LOOP] recovered from fault", e);
+            }
             // No more Thread.sleep(16) — getInput() now uses pollInput(1ms)
             // which blocks efficiently and returns as soon as input arrives.
             // The 1ms timeout ensures needsRefresh is checked promptly even

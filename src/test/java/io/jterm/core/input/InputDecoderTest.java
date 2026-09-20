@@ -169,11 +169,21 @@ class InputDecoderTest {
     }
 
     @Test
-    void escapeFollowedByControlCharProducesUnknown() {
-        // ESC + 0x01 (Ctrl+A byte) — 0x01 is not letter/digit/printable in the escape branch
-        var ks = decode(new byte[]{0x1b, 0x01});
-        // 0x01 is not >= 32, so falls through to UNKNOWN
-        assertEquals(KeyType.UNKNOWN, ks.type());
+    void escapeFollowedByControlCharDeliversBoth() {
+        // ESC + 0x01 (Ctrl+A byte): the control byte is a NEW key press, not
+        // part of an escape sequence. It must be pushed back and delivered on
+        // the next poll — not dropped as UNKNOWN (the old behavior ate keys).
+        var decoder = new InputDecoder(new ByteArrayInputStream(new byte[]{0x1b, 0x01}));
+        try {
+            var first = decoder.poll().orElseThrow();
+            assertEquals(KeyType.ESCAPE, first.type());
+            var second = decoder.poll().orElseThrow();
+            assertEquals(KeyType.CHARACTER, second.type());
+            assertTrue(second.ctrl(), "Ctrl+A keeps its modifier");
+            assertEquals('A', second.character());
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
     }
 
     @Test
@@ -702,10 +712,19 @@ class InputDecoderTest {
     }
 
     @Test
-    void unknownEscapeSequenceWithControlChar() {
-        // ESC + 0x07 (BEL, control char, < 32) -> UNKNOWN
-        var ks = decode(new byte[]{0x1b, 0x07});
-        assertEquals(KeyType.UNKNOWN, ks.type());
+    void escapeThenBelDeliversEscapeThenCtrlG() {
+        // ESC + 0x07 (BEL): control bytes after ESC are their own keystrokes
+        // (pushed back), never swallowed into a bogus UNKNOWN sequence.
+        var decoder = new InputDecoder(new ByteArrayInputStream(new byte[]{0x1b, 0x07}));
+        try {
+            assertEquals(KeyType.ESCAPE, decoder.poll().orElseThrow().type());
+            var second = decoder.poll().orElseThrow();
+            assertEquals(KeyType.CHARACTER, second.type());
+            assertTrue(second.ctrl());
+            assertEquals('G', second.character());
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
     }
 
     @Test

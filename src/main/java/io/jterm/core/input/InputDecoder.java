@@ -114,6 +114,15 @@ public class InputDecoder {
         if (second == 'O') {
             return readOSequence();
         }
+        // Standalone control byte (Ctrl-A..Ctrl+Z etc.) right after ESC — it is
+        // a NEW key press (e.g. ESC closes the chat overlay, user immediately
+        // presses Ctrl-T to reopen), not part of any escape sequence. Push it
+        // back so the next poll() delivers it, and deliver the ESCAPE now.
+        // The old parser dropped such bytes as UNKNOWN, silently eating keys.
+        if (second >= 1 && second <= 26) {
+            pushback = second;
+            return Optional.of(new KeyStroke(KeyType.ESCAPE));
+        }
         if (Character.isLetterOrDigit(second) || second >= 32 && second < 127) {
             return Optional.of(KeyStroke.character((char) second, false, true, false));
         }

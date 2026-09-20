@@ -350,7 +350,20 @@ public class SocketTerminal implements Terminal {
                 var currentIn = in;
                 var ks = currentDecoder != null ? currentDecoder.poll() : java.util.Optional.<KeyStroke>empty();
                 if (ks.isPresent()) {
-                    inputQueue.put(ks.get());
+                    // Put WITHOUT honoring interrupts: an interrupt racing a
+                    // put() would orphan a decoded keystroke across an
+                    // attach() swap (lost key press). Interrupt status is
+                    // re-asserted so the loop still notices shutdown.
+                    boolean interrupted = false;
+                    while (true) {
+                        try {
+                            inputQueue.put(ks.get());
+                            break;
+                        } catch (InterruptedException ie) {
+                            interrupted = true;
+                        }
+                    }
+                    if (interrupted) Thread.currentThread().interrupt();
                 } else {
                     // No data available — check if the stream is still open
                     // by probing available(). If the stream is exhausted, exit.
@@ -364,12 +377,35 @@ public class SocketTerminal implements Terminal {
                 }
             }
         } catch (InterruptedException e) {
-            // Normal shutdown
+            // Normal shutdown (attach/close): flush any keystroke the decoder
+            // already consumed — an interrupt landing between read() and
+            // queue.put() would otherwise orphan the user's last key press
+            // across a reattach.
+            flushPendingDecodedKeys();
         } catch (IOException e) {
             // Stream closed or error — push EOF so readers can detect it
             if (!inputClosed) {
                 inputQueue.offer(new KeyStroke(io.jterm.core.input.KeyType.EOF));
             }
+        }
+    }
+
+    /**
+     * Best-effort drain of keystrokes the decoder has already read from the
+     * stream but not yet published to the input queue. Called when the reader
+     * thread is shutting down so a concurrent attach() swap cannot lose keys
+     * that were mid-decode.
+     */
+    private void flushPendingDecodedKeys() {
+        try {
+            var currentDecoder = decoder;
+            if (currentDecoder == null) return;
+            KeyStroke pending;
+            while ((pending = currentDecoder.poll().orElse(null)) != null) {
+                if (!inputQueue.offer(pending)) break;
+            }
+        } catch (IOException ignored) {
+            // Stream already closed — nothing to flush.
         }
     }
 

@@ -249,7 +249,18 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
             }
             var modal = modalWindow();
             if (modal != null && activeWindow != null && !modal.equals(activeWindow)) {
-                return true;
+                // A modal window exists but isn't active — dispatch the key to
+                // it instead of discarding it. The old behavior returned true
+                // and DROPPED the keystroke entirely (e.g. a Ctrl-T arriving
+                // while a stale modal reference lingered was silently eaten).
+                activeWindow = modal;
+            }
+            if (activeWindow != null && windowsToRemove.contains(activeWindow)) {
+                // The active window is pending removal (e.g. the chat popup
+                // just closed via ESC): dispatching to it would feed a dead
+                // window. Re-point to the topmost live window instead.
+                var live = findTopmostNonBackground(new ArrayList<>(windows));
+                activeWindow = live != null ? live : activeWindow;
             }
             if (activeWindow != null && activeWindow.getHints().contains(WindowHint.BACKGROUND)) {
                 activeWindow = findTopmostNonBackground(new ArrayList<>(windows));

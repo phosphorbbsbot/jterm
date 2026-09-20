@@ -424,11 +424,20 @@ public class SocketTerminal implements Terminal {
     public synchronized void attach(InputStream newIn, OutputStream newOut, String stealNotice) {
         if (newIn == null) throw new NullPointerException("newIn");
         if (newOut == null) throw new NullPointerException("newOut");
-        // Stop the previous reader thread so it stops polling the old stream
+        // Stop the previous reader thread and WAIT for it to exit: the old
+        // reader may be mid-decode on the old stream. Interrupting and
+        // immediately swapping the decoder used to orphan any keystroke the
+        // old reader had decoded (or was decoding) — the user's key presses
+        // around a reattach silently vanished ("Ctrl-T is very random").
         inputClosed = true;
         var previousReader = readerThread;
         if (previousReader != null) {
             previousReader.interrupt();
+            try {
+                previousReader.join(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
         // Notify the displaced client BEFORE the swap: after `this.out` is
         // rebound below, the old OutputStream reference is unreachable and
@@ -447,7 +456,9 @@ public class SocketTerminal implements Terminal {
         this.in = newIn;
         this.out = new BufferedOutputStream(newOut, 65536);
         this.decoder = new InputDecoder(newIn);
-        inputQueue.clear();
+        // Keystrokes already decoded and queued survive the swap — clearing
+        // the queue dropped the user's last typed keys (Ctrl-T!) on every
+        // reattach. The new reader continues feeding the same queue.
         inputClosed = false;
         readerThread = Thread.ofVirtual().name("socket-input-reader").start(this::readLoop);
     }

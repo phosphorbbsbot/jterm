@@ -39,6 +39,9 @@ public class SocketTerminal implements Terminal {
     // instead of the old 16ms sleep loop.
     private final LinkedBlockingQueue<KeyStroke> inputQueue = new LinkedBlockingQueue<>(256);
     private volatile Thread readerThread;
+
+    /** Test visibility for interrupt-survival regression tests (io.jterm.core package). */
+    Thread readerThreadForTest() { return readerThread; }
     private volatile boolean inputClosed = false;
     private volatile boolean inPrivateMode = false;
 
@@ -350,6 +353,13 @@ public class SocketTerminal implements Terminal {
                 var currentIn = in;
                 var ks = currentDecoder != null ? currentDecoder.poll() : java.util.Optional.<KeyStroke>empty();
                 if (ks.isPresent()) {
+                    // BBS input tracing (bbs.debug): every keystroke decoded
+                    // from the wire, before it enters the queue. Correlates
+                    // with the BBS-side BBS-DISPATCH marker — if DECODE logs
+                    // but DISPATCH never does, the GUI loop is not polling.
+                    if (Boolean.getBoolean("bbs.debug")) {
+                        System.out.println("[BBS-DECODE] " + ks.get());
+                    }
                     // Put WITHOUT honoring interrupts: an interrupt racing a
                     // put() would orphan a decoded keystroke across an
                     // attach() swap (lost key press) AND re-asserting the

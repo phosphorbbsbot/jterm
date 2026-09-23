@@ -27,7 +27,9 @@ public class DefaultGridModel<T> implements GridModel<T> {
      * @param row the row to add
      */
     public void addRow(T row) {
-        rows.add(row);
+        synchronized (rows) {
+            rows.add(row);
+        }
         fireGridChanged();
     }
 
@@ -38,19 +40,25 @@ public class DefaultGridModel<T> implements GridModel<T> {
      * @param newRows the rows to add
      */
     public void addRows(Collection<T> newRows) {
-        rows.addAll(newRows);
+        synchronized (rows) {
+            rows.addAll(newRows);
+        }
         fireGridChanged();
     }
 
     /**
      * Replaces all rows in this model with the given collection, firing
-     * {@code gridChanged} exactly once.
+     * {@code gridChanged} exactly once. The clear+add sequence is atomic,
+     * so concurrent {@code setRows} calls always leave the model holding
+     * exactly one caller's rows (never a blend of two).
      *
      * @param newRows the new set of rows
      */
     public void setRows(Collection<T> newRows) {
-        rows.clear();
-        rows.addAll(newRows);
+        synchronized (rows) {
+            rows.clear();
+            rows.addAll(newRows);
+        }
         fireGridChanged();
     }
 
@@ -58,7 +66,9 @@ public class DefaultGridModel<T> implements GridModel<T> {
      * Removes all rows from this model and fires {@code gridChanged}.
      */
     public void clear() {
-        rows.clear();
+        synchronized (rows) {
+            rows.clear();
+        }
         fireGridChanged();
     }
 

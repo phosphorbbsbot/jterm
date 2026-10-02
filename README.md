@@ -9,17 +9,17 @@ layout managers, and per-character ANSI styling.
 <dependency>
     <groupId>io.jterm</groupId>
     <artifactId>jterm</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
-Gradle: `implementation("io.jterm:jterm:0.1.1")` · [Browse on Maven Central →](https://central.sonatype.com/artifact/io.jterm/jterm)
+Gradle: `implementation("io.jterm:jterm:0.1.2")` · [Browse on Maven Central →](https://central.sonatype.com/artifact/io.jterm/jterm)
 
 ## Quick Start
 
 ```bash
 mvn package
-java -cp target/jterm-0.1.2-SNAPSHOT.jar io.jterm.demo.HelloWorld
+java -cp target/jterm-0.1.3-SNAPSHOT.jar io.jterm.demo.HelloWorld
 ```
 
 ## Features
@@ -39,7 +39,7 @@ java -cp target/jterm-0.1.2-SNAPSHOT.jar io.jterm.demo.HelloWorld
 - `DashboardDemo` — full-screen layout with ListBox, Table, ProgressBar, and Tab navigation
 
 ```bash
-java -cp target/jterm-0.1.2-SNAPSHOT.jar io.jterm.demo.DashboardDemo
+java -cp target/jterm-0.1.3-SNAPSHOT.jar io.jterm.demo.DashboardDemo
 ```
 
 ## Architecture

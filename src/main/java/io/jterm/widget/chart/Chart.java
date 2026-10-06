@@ -689,6 +689,13 @@ public class Chart extends AbstractComponent {
         }
     }
 
+    /** Same cell with the foreground swapped to {@code color} (no-op when equal). */
+    private static TextCell recolored(TextCell cell, Color color) {
+        return java.util.Objects.equals(color, cell.fg())
+            ? cell
+            : new TextCell(cell.character(), color, cell.bg(), cell.modifiers());
+    }
+
     private void drawLineSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell) {
         int n = series.size();
         // Use sub-cell (half-block) Y resolution: 2 sub-rows per terminal row.
@@ -713,12 +720,15 @@ public class Chart extends AbstractComponent {
             subY[i] = Math.max(0, Math.min(2 * ph - 1, subY[i]));
         }
 
-        // Draw line segments using sub-cell Bresenham — segments never cross a gap
+        // Draw line segments using sub-cell Bresenham — segments never cross a gap.
+        // A segment leaving point i renders in point i's effective color (per-point
+        // overrides recolor "the point at i", including the segment leaving it).
         for (int i = 0; i < n - 1; i++) {
             if (gap[i] || gap[i + 1]) {
-                continue; // (x, y) stay at their last computed values — unused
+                continue;
             }
-            drawPlotLineSubCell(g, screenX[i], subY[i], screenX[i + 1], subY[i + 1], py, cell);
+            var segCell = recolored(cell, series.colorAt(i));
+            drawPlotLineSubCell(g, screenX[i], subY[i], screenX[i + 1], subY[i + 1], py, segCell);
         }
 
         // Draw markers at data points, merging with existing line characters.
@@ -728,6 +738,7 @@ public class Chart extends AbstractComponent {
             if (gap[i]) {
                 continue;
             }
+            var pointCell = recolored(cell, series.colorAt(i));
             int row = py + subY[i] / 2;
             int half = subY[i] % 2;  // 0 = upper half, 1 = lower half
             char marker = half == 0 ? '▀' : '▄';
@@ -750,7 +761,7 @@ public class Chart extends AbstractComponent {
                 // No meaningful line char or same half — just use marker
                 merged = marker;
             }
-            g.setCell(screenX[i], row, cell.withCharacter(merged));
+            g.setCell(screenX[i], row, pointCell.withCharacter(merged));
         }
     }
 
@@ -771,10 +782,11 @@ public class Chart extends AbstractComponent {
             int barHeight = (int) (yFraction * (ph - 1));
             barHeight = Math.max(0, Math.min(ph - 1, barHeight));
 
+            var barCell = recolored(cell, series.colorAt(i));
             for (int dy = 0; dy <= barHeight; dy++) {
                 for (int dx = 0; dx < barWidth && x + dx < px + pw; dx++) {
                     char ch = dy == barHeight ? '▀' : '█';
-                    g.setCell(x + dx, baselineY - dy, cell.withCharacter(ch));
+                    g.setCell(x + dx, baselineY - dy, barCell.withCharacter(ch));
                 }
             }
         }

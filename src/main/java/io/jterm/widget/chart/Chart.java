@@ -777,7 +777,11 @@ public class Chart extends AbstractComponent {
             int y = py + (int) ((1.0 - yFraction) * (ph - 1));
             y = Math.max(py, Math.min(py + ph - 1, y));
 
-            g.setCell(x, y, cell.withCharacter('●'));
+            Color pointColor = series.colorAt(i);
+            TextCell pointCell = pointColor == series.color()
+                ? cell
+                : new TextCell(cell.character(), pointColor, cell.bg(), cell.modifiers());
+            g.setCell(x, y, pointCell.withCharacter('●'));
         }
     }
 

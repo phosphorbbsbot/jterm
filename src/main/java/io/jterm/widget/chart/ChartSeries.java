@@ -20,20 +20,45 @@ import java.util.List;
  * @param values data values in plot order (stored unmodifiable; {@code null} becomes empty)
  * @param type   chart type controlling how the values are rendered (not {@code null})
  * @param color  color used for the series line/markers and legend swatch (not {@code null})
+ * @param pointColors optional per-point color overrides — entry {@code i} (when non-null)
+ *                    recolors point {@code i}'s marker and any segment leaving it; shorter
+ *                    than values = trailing points use {@code color}; entries may be null
+ *                    (= use {@code color}); {@code null} overall = uniform series coloring
  */
-public record ChartSeries(String name, List<Double> values, ChartType type, Color color) {
+public record ChartSeries(String name, List<Double> values, ChartType type, Color color,
+                          List<Color> pointColors) {
 
-    /**
-     * Compact constructor: validates required fields and stores {@code values}
-     * as an unmodifiable copy ({@code null} becomes empty).
-     *
-     * @throws IllegalArgumentException if {@code name}, {@code type}, or {@code color} is {@code null}
-     */
+    // ── Compat constructors (pre-palette call sites unchanged) ──────
+
+    /** Canonical-shaped 4-arg convenience: no per-point palette. */
+    public ChartSeries(String name, List<Double> values, ChartType type, Color color) {
+        this(name, values, type, color, null);
+    }
+
+    /** Compact constructor: validates required fields and stores {@code values}
+     *  as an unmodifiable copy ({@code null} becomes empty). The palette, when
+     *  present, must not be longer than {@code values}. */
     public ChartSeries {
         if (name == null) throw new IllegalArgumentException("name cannot be null");
         values = values == null ? List.of() : Collections.unmodifiableList(new ArrayList<>(values));
         if (type == null) throw new IllegalArgumentException("type cannot be null");
         if (color == null) throw new IllegalArgumentException("color cannot be null");
+        if (pointColors != null) {
+            if (pointColors.size() > values.size()) {
+                throw new IllegalArgumentException(
+                    "pointColors.size()=%d exceeds values.size()=%d"
+                        .formatted(pointColors.size(), values.size()));
+            }
+            pointColors = Collections.unmodifiableList(new ArrayList<>(pointColors));
+        }
+    }
+
+    /** Effective render color for point {@code i}: palette override or base color. */
+    public Color colorAt(int i) {
+        if (pointColors != null && i < pointColors.size() && pointColors.get(i) != null) {
+            return pointColors.get(i);
+        }
+        return color;
     }
 
     /**

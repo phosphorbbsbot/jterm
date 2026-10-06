@@ -695,21 +695,29 @@ public class Chart extends AbstractComponent {
         // subY = 0 → top of py, subY = 2*ph-1 → bottom of py+ph-1
         int[] screenX = new int[n];
         int[] subY = new int[n];
+        boolean[] gap = new boolean[n];
 
         for (int i = 0; i < n; i++) {
             double xFraction = n == 1 ? 0.5 : (double) i / (n - 1);
             screenX[i] = px + (int) (xFraction * (pw - 1));
 
-            double val = series.values().get(i);
-            double yFraction = valueToYFraction(val, yMin, yMax);
+            Double boxed = series.values().get(i);
+            if (boxed == null) {
+                gap[i] = true; // null = absent point: no marker, no segment
+                continue;
+            }
+            double yFraction = valueToYFraction(boxed, yMin, yMax);
             // Invert: yFraction=1 (max) → top, yFraction=0 (min) → bottom
             double exactSubY = (1.0 - yFraction) * (2.0 * ph - 1);
             subY[i] = (int) Math.round(exactSubY);
             subY[i] = Math.max(0, Math.min(2 * ph - 1, subY[i]));
         }
 
-        // Draw line segments using sub-cell Bresenham
+        // Draw line segments using sub-cell Bresenham — segments never cross a gap
         for (int i = 0; i < n - 1; i++) {
+            if (gap[i] || gap[i + 1]) {
+                continue; // (x, y) stay at their last computed values — unused
+            }
             drawPlotLineSubCell(g, screenX[i], subY[i], screenX[i + 1], subY[i + 1], py, cell);
         }
 
@@ -717,6 +725,9 @@ public class Chart extends AbstractComponent {
         // A marker should never DOWNGRADE a full block (█) to a half block (▀/▄).
         // If the line already drew the other half in the same cell, upgrade to █.
         for (int i = 0; i < n; i++) {
+            if (gap[i]) {
+                continue;
+            }
             int row = py + subY[i] / 2;
             int half = subY[i] % 2;  // 0 = upper half, 1 = lower half
             char marker = half == 0 ? '▀' : '▄';
@@ -749,11 +760,14 @@ public class Chart extends AbstractComponent {
         int baselineY = py + ph - 1;
 
         for (int i = 0; i < n; i++) {
+            Double boxed = series.values().get(i);
+            if (boxed == null) {
+                continue; // gap: no bar
+            }
             double xFraction = n == 1 ? 0.5 : (double) i / (n - 1);
             int x = px + (int) (xFraction * (pw - 1));
 
-            double val = series.values().get(i);
-            double yFraction = valueToYFraction(val, yMin, yMax);
+            double yFraction = valueToYFraction(boxed, yMin, yMax);
             int barHeight = (int) (yFraction * (ph - 1));
             barHeight = Math.max(0, Math.min(ph - 1, barHeight));
 
@@ -769,11 +783,14 @@ public class Chart extends AbstractComponent {
     private void drawScatterSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell) {
         int n = series.size();
         for (int i = 0; i < n; i++) {
+            Double boxed = series.values().get(i);
+            if (boxed == null) {
+                continue; // gap: no dot
+            }
             double xFraction = n == 1 ? 0.5 : (double) i / (n - 1);
             int x = px + (int) (xFraction * (pw - 1));
 
-            double val = series.values().get(i);
-            double yFraction = valueToYFraction(val, yMin, yMax);
+            double yFraction = valueToYFraction(boxed, yMin, yMax);
             int y = py + (int) ((1.0 - yFraction) * (ph - 1));
             y = Math.max(py, Math.min(py + ph - 1, y));
 

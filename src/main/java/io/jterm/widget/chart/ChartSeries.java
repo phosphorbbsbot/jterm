@@ -87,22 +87,24 @@ public record ChartSeries(String name, List<Double> values, ChartType type, Colo
     public boolean isEmpty() { return values.isEmpty(); }
 
     /**
-     * Minimum value in the series, or {@code Double.NaN} if empty.
+     * Minimum value in the series among non-null entries, or {@code Double.NaN}
+     * if empty or all-null. Null entries are gaps and never throw.
      *
-     * @return the minimum value, or {@code Double.NaN} if empty
+     * @return the minimum finite value, or {@code Double.NaN}
      */
     public double min() {
-        if (values.isEmpty()) return Double.NaN;
-        return values.stream().mapToDouble(Double::doubleValue).min().orElse(Double.NaN);
+        return values.stream().filter(v -> v != null)
+            .mapToDouble(Double::doubleValue).min().orElse(Double.NaN);
     }
 
     /**
-     * Maximum value in the series, or {@code Double.NaN} if empty.
+     * Maximum value in the series among non-null entries, or {@code Double.NaN}
+     * if empty or all-null. Null entries are gaps and never throw.
      *
-     * @return the maximum value, or {@code Double.NaN} if empty
+     * @return the maximum finite value, or {@code Double.NaN}
      */
     public double max() {
-        if (values.isEmpty()) return Double.NaN;
-        return values.stream().mapToDouble(Double::doubleValue).max().orElse(Double.NaN);
+        return values.stream().filter(v -> v != null)
+            .mapToDouble(Double::doubleValue).max().orElse(Double.NaN);
     }
 }

@@ -447,6 +447,12 @@ public class Chart extends AbstractComponent {
         int px = plotArea[0], py = plotArea[1], pw = plotArea[2], ph = plotArea[3];
 
         var yRange = computeYRange();
+        // Fill mode (Joe 2026-10-07): the axis IS the primary series' own
+        // range — every series then fills the screen, and the grid labels
+        // (drawn from this range) speak the primary's units exactly.
+        if (fillAllSeries && !seriesList.isEmpty() && !seriesList.get(0).isEmpty()) {
+            yRange = paddedRange(seriesList.get(0));
+        }
         double yMin = yRange[0], yMax = yRange[1];
         this.latestYRange = yRange; // recorded for per-series effective ranges
 
@@ -566,7 +572,11 @@ public class Chart extends AbstractComponent {
      * using linear or logarithmic mapping depending on the axis config.
      */
     private double valueToYFraction(double val, double yMin, double yMax) {
-        if (yAxisConfig.logarithmic()) {
+        return valueToYFraction(val, yMin, yMax, false);
+    }
+
+    private double valueToYFraction(double val, double yMin, double yMax, boolean forceLinear) {
+        if (yAxisConfig.logarithmic() && !forceLinear) {
             // Guard against non-positive values
             double logMin = Math.log(yMin);
             double logMax = Math.log(yMax);
@@ -724,9 +734,25 @@ public class Chart extends AbstractComponent {
      * of ±1 so it renders as a thin mid-height line (dashes survive as the
      * line is drawn flat across the plot).
      */
+    /** [min,max] of the series' non-null values with the shared 5% pad. */
+    private double[] paddedRange(ChartSeries series) {
+        double mn = Double.MAX_VALUE;
+        double mx = -Double.MAX_VALUE;
+        for (Double v : series.values()) {
+            if (v == null) continue;
+            mn = Math.min(mn, v);
+            mx = Math.max(mx, v);
+        }
+        if (mn == Double.MAX_VALUE) return computeYRange();
+        double range = mx - mn;
+        if (range == 0) return new double[]{mn - 1.0, mn + 1.0};
+        double pad = range * 0.05;
+        return new double[]{mn - pad, mx + pad};
+    }
+
     private double[] effectiveSeriesRange(ChartSeries series) {
         if (!fillAllSeries || seriesList.isEmpty() || seriesList.get(0) == series) {
-            return new double[]{yAxisMin(), yAxisMax()};
+            return new double[]{yAxisMin(), yAxisMax()}; // primary range == axis range in fill mode
         }
         double mn = Double.MAX_VALUE;
         double mx = -Double.MAX_VALUE;
@@ -762,6 +788,9 @@ public class Chart extends AbstractComponent {
         double[] span = effectiveSeriesRange(series);
         yMin = span[0];
         yMax = span[1];
+        // Fill mode secondaries own-map in LINEAR space: their private range
+        // has no log semantics (the log axis belongs to the primary only).
+        boolean secondaryLinear = fillAllSeries && !seriesList.isEmpty() && seriesList.get(0) != series;
         double yRange = yMax - yMin;
         if (yRange == 0) yRange = 1;
 
@@ -770,9 +799,9 @@ public class Chart extends AbstractComponent {
         var valueCell = new TextCell(' ', series.color(), bg, SGR.BOLD);
 
         switch (series.type()) {
-            case LINE -> drawLineSeries(g, series, px, py, pw, ph, yMin, yMax, valueCell);
-            case BAR -> drawBarSeries(g, series, px, py, pw, ph, yMin, yMax, valueCell);
-            case SCATTER -> drawScatterSeries(g, series, px, py, pw, ph, yMin, yMax, valueCell);
+            case LINE -> drawLineSeries(g, series, px, py, pw, ph, yMin, yMax, valueCell, secondaryLinear);
+            case BAR -> drawBarSeries(g, series, px, py, pw, ph, yMin, yMax, valueCell, secondaryLinear);
+            case SCATTER -> drawScatterSeries(g, series, px, py, pw, ph, yMin, yMax, valueCell, secondaryLinear);
         }
     }
 
@@ -783,7 +812,7 @@ public class Chart extends AbstractComponent {
             : new TextCell(cell.character(), color, cell.bg(), cell.modifiers());
     }
 
-    private void drawLineSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell) {
+    private void drawLineSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell, boolean forceLinear) {
         int n = series.size();
         // Use sub-cell (half-block) Y resolution: 2 sub-rows per terminal row.
         // subY = 0 → top of py, subY = 2*ph-1 → bottom of py+ph-1
@@ -800,22 +829,34 @@ public class Chart extends AbstractComponent {
                 gap[i] = true; // null = absent point: no marker, no segment
                 continue;
             }
-            double yFraction = valueToYFraction(boxed, yMin, yMax);
+            double yFraction = valueToYFraction(boxed, yMin, yMax, forceLinear);
             // Invert: yFraction=1 (max) → top, yFraction=0 (min) → bottom
             double exactSubY = (1.0 - yFraction) * (2.0 * ph - 1);
             subY[i] = (int) Math.round(exactSubY);
             subY[i] = Math.max(0, Math.min(2 * ph - 1, subY[i]));
         }
 
-        // Draw line segments using sub-cell Bresenham — segments never cross a gap.
-        // A segment leaving point i renders in point i's effective color (per-point
-        // overrides recolor "the point at i", including the segment leaving it).
-        for (int i = 0; i < n - 1; i++) {
-            if (gap[i] || gap[i + 1]) {
+        // Draw line segments using sub-cell Bresenham.
+        // Default law: segments never cross a gap (a gap = absent data).
+        // Fill mode connects ACROSS gap runs: sparse series (quarterly EPS
+        // plotted on a daily axis) would otherwise render as isolated dots
+        // (Joe 2026-10-07 — earnings invisible next to daily P/E).
+        // A segment renders in the effective color of its START point.
+        int lastKnown = -1;
+        for (int i = 0; i < n; i++) {
+            if (gap[i]) {
                 continue;
             }
-            var segCell = recolored(cell, series.colorAt(i));
-            drawPlotLineSubCell(g, screenX[i], subY[i], screenX[i + 1], subY[i + 1], py, segCell);
+            if (lastKnown >= 0) {
+                // fill mode: connect across gap runs to the previous non-null
+                // point; default mode: only when adjacent (gap law unchanged).
+                boolean adjacent = i == lastKnown + 1;
+                if (fillAllSeries || adjacent) {
+                    var segCell = recolored(cell, series.colorAt(lastKnown));
+                    drawPlotLineSubCell(g, screenX[lastKnown], subY[lastKnown], screenX[i], subY[i], py, segCell);
+                }
+            }
+            lastKnown = i;
         }
 
         // Draw markers at data points, merging with existing line characters.
@@ -852,7 +893,7 @@ public class Chart extends AbstractComponent {
         }
     }
 
-    private void drawBarSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell) {
+    private void drawBarSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell, boolean forceLinear) {
         int n = series.size();
         int barWidth = Math.max(1, pw / n - 1);
         int baselineY = py + ph - 1;
@@ -865,7 +906,7 @@ public class Chart extends AbstractComponent {
             double xFraction = n == 1 ? 0.5 : (double) i / (n - 1);
             int x = px + (int) (xFraction * (pw - 1));
 
-            double yFraction = valueToYFraction(boxed, yMin, yMax);
+            double yFraction = valueToYFraction(boxed, yMin, yMax, forceLinear);
             int barHeight = (int) (yFraction * (ph - 1));
             barHeight = Math.max(0, Math.min(ph - 1, barHeight));
 
@@ -879,7 +920,7 @@ public class Chart extends AbstractComponent {
         }
     }
 
-    private void drawScatterSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell) {
+    private void drawScatterSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, TextCell cell, boolean forceLinear) {
         int n = series.size();
         for (int i = 0; i < n; i++) {
             Double boxed = series.values().get(i);
@@ -889,7 +930,7 @@ public class Chart extends AbstractComponent {
             double xFraction = n == 1 ? 0.5 : (double) i / (n - 1);
             int x = px + (int) (xFraction * (pw - 1));
 
-            double yFraction = valueToYFraction(boxed, yMin, yMax);
+            double yFraction = valueToYFraction(boxed, yMin, yMax, forceLinear);
             int y = py + (int) ((1.0 - yFraction) * (ph - 1));
             y = Math.max(py, Math.min(py + ph - 1, y));
 

@@ -91,36 +91,36 @@ class ChartFillScaleTest {
     }
 
     @Test
-    void primaryKeepsSharedScaleWhenFillAll() {
-        var bufOff = new ScreenBuffer(new TerminalSize(W, H));
-        chart(false).draw(new TextGraphics(bufOff));
+    void primaryFillsItsOwnRangeWhenFillAll() {
+        // v2 law (Joe correction 2026-10-07): the PRIMARY fills the screen
+        // too — the axis becomes the primary's own range, so the primary's
+        // geometry spans the plot height (it was squashed one-flat-row under
+        // the shared scale with differently-scaled secondaries).
         var bufOn = new ScreenBuffer(new TerminalSize(W, H));
         chart(true).draw(new TextGraphics(bufOn));
-
-        int[] primaryOff = verticalExtent(bufOff, AnsiColor.GREEN);
         int[] primaryOn = verticalExtent(bufOn, AnsiColor.GREEN);
-        assertEquals(primaryOff[0], primaryOn[0], "primary top row unchanged by fill mode");
-        assertEquals(primaryOff[1], primaryOn[1], "primary bottom row unchanged by fill mode");
+        assertTrue(primaryOn[1] - primaryOn[0] >= 4,
+            "primary spans the plot height in fill mode; extent=" + (primaryOn[1] - primaryOn[0]));
     }
 
     @Test
-    void gridLabelsUnchangedByFillMode() {
-        var off = chart(false);
+    void gridLabelsSpeakPrimaryUnitsWhenFillAll() {
+        // v2 law: labels come from the primary's own range — e.g. plotting
+        // Earnings + P/E shows grid ticks in the PRIMARY's units, not a
+        // range stretched across both series' units.
         var on = chart(true);
-        var bufOff = new ScreenBuffer(new TerminalSize(W, H));
-        off.draw(new TextGraphics(bufOff));
         var bufOn = new ScreenBuffer(new TerminalSize(W, H));
         on.draw(new TextGraphics(bufOn));
-
-        // Left label gutter: same tick labels either way (primary's units).
-        for (int r = 0; r < H; r++) {
-            String lo = "", ln = "";
-            for (int c = 0; c < 6; c++) {
-                lo += bufOff.getCell(c, r).character();
-                ln += bufOn.getCell(c, r).character();
-            }
-            assertEquals(lo.trim(), ln.trim(), "label row " + r + " identical across modes");
+        // Primary = "big" 0..10 (5% pad → top tick ≈ 10): the gutter must
+        // show a single-digit order of magnitude, NOT the shared 0..200 axis.
+        String gutter = "";
+        for (int r = 1; r < H - 1; r++) {
+            StringBuilder row = new StringBuilder();
+            for (int c = 1; c < 6; c++) row.append(bufOn.getCell(c, r).character());
+            gutter += row.toString().trim() + "\n";
         }
+        assertFalse(gutter.contains("100"), "no shared-scale 100 tick: " + gutter);
+        assertTrue(gutter.lines().anyMatch(l -> l.matches(".*\\d+.*")), "ticks render");
     }
 
     @Test
@@ -153,5 +153,29 @@ class ChartFillScaleTest {
             sb.append('\n');
         }
         return sb.toString();
+    }
+
+    @Test
+    void joeCase_primaryPeWithSparseEpsSecondary_logAxis() {
+        // Real AAPL 1Y: PE tight 36.9..37.4 with nulls, EPS quarterly sparse.
+        // PE is PRIMARY: its own range defines the axis + labels; EPS (secondary)
+        // fills its own range. NEITHER may pin flat at an edge.
+        var pe = new ChartSeries("P/E", java.util.Arrays.asList(37.40, null, 37.32, 37.41, 37.03, null, 37.33, 36.93), ChartType.LINE, AnsiColor.GREEN);
+        var eps = new ChartSeries("EPS", java.util.Arrays.asList(1.20, null, null, null, 2.03, null, null, 2.85), ChartType.LINE, AnsiColor.RED);
+        var chart = new Chart("joe");
+        chart.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(W, H));
+        chart.setYAxisConfig(ChartAxisConfig.logAuto());
+        chart.setFillAllSeries(true);
+        chart.addSeries(pe);   // primary
+        chart.addSeries(eps);  // secondary
+        var buf = new ScreenBuffer(new TerminalSize(W, H));
+        chart.draw(new TextGraphics(buf));
+
+        int[] peE = verticalExtent(buf, AnsiColor.GREEN);
+        int[] epsE = verticalExtent(buf, AnsiColor.RED);
+        assertTrue(peE[0] != Integer.MAX_VALUE, "PE renders");
+        assertTrue(epsE[0] != Integer.MAX_VALUE, "EPS renders (not swallowed by null gaps)");
+        assertTrue(peE[1] - peE[0] >= 4, "PE fills the plot height (primary too); extent=" + (peE[1] - peE[0]));
+        assertTrue(epsE[1] - epsE[0] >= 4, "EPS fills the plot height; extent=" + (epsE[1] - epsE[0]));
     }
 }

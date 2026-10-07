@@ -51,6 +51,17 @@ public class Chart extends AbstractComponent {
     private String title = "";
     private final List<ChartSeries> seriesList = new ArrayList<>();
     private ChartAxisConfig yAxisConfig = ChartAxisConfig.auto();
+    /**
+     * Fill scale mode (Joe, 2026-10-07): when true, every NON-primary series
+     * maps its own [min,max] onto the full plot height so differently scaled
+     * units (earnings $ vs PE ratio) are both visible. The PRIMARY series
+     * keeps the shared scale and the grid labels stay in the primary's
+     * units. Off by default — without it all series share one Y scale.
+     */
+    private boolean fillAllSeries;
+    /** Shared Y range from the latest render — primary/empty series fallback. */
+    private double[] latestYRange = new double[]{0.0, 1.0};
+
     private List<String> xAxisLabels = new ArrayList<>();
     private boolean showGrid = true;
     private boolean showLegend = true;
@@ -183,6 +194,26 @@ public class Chart extends AbstractComponent {
         }
         invalidate();
         return this;
+    }
+
+    /**
+     * Enable per-series fill scale: every non-primary series spans the full
+     * plot height using its own min/max; grid labels remain the primary
+     * series' axis (native units). Regression series follow their source
+     * series' scale. A perfectly flat series (min == max) renders as a
+     * mid-height dashed line.
+     *
+     * @param on true to fill every non-primary series to the plot height
+     */
+    public void setFillAllSeries(boolean on) {
+        this.fillAllSeries = on;
+    }
+
+    /**
+     * @return whether per-series fill-scale mode is enabled
+     */
+    public boolean isFillAllSeries() {
+        return fillAllSeries;
     }
 
     /**
@@ -417,6 +448,7 @@ public class Chart extends AbstractComponent {
 
         var yRange = computeYRange();
         double yMin = yRange[0], yMax = yRange[1];
+        this.latestYRange = yRange; // recorded for per-series effective ranges
 
         // Draw border if enabled
         if (showBorder) {
@@ -437,10 +469,21 @@ public class Chart extends AbstractComponent {
         // Draw X-axis baseline
         drawXAxis(graphics, px, py + ph - 1, pw, theme.background());
 
-        // Draw each series
-        for (var series : seriesList) {
-            if (series.isEmpty()) continue;
-            drawSeries(graphics, series, px, py, pw, ph, yMin, yMax, theme.background());
+        // Draw each series. In fill mode the order INVERTS (primary draws
+        // LAST/on top): every series spans the full height so their extreme
+        // rows always collide — the primary (the labeled axis) must own them.
+        if (fillAllSeries) {
+            var reversed = new ArrayList<>(seriesList);
+            java.util.Collections.reverse(reversed);
+            for (var series : reversed) {
+                if (series.isEmpty()) continue;
+                drawSeries(graphics, series, px, py, pw, ph, yMin, yMax, theme.background());
+            }
+        } else {
+            for (var series : seriesList) {
+                if (series.isEmpty()) continue;
+                drawSeries(graphics, series, px, py, pw, ph, yMin, yMax, theme.background());
+            }
         }
 
         // Draw legend
@@ -673,8 +716,52 @@ public class Chart extends AbstractComponent {
         }
     }
 
+    /**
+     * Effective [min,max] used to map THIS series' values onto the plot:
+     * the primary series always uses the shared range (its geometry must
+     * agree with the grid labels); in fill-all mode every other series uses
+     * its own non-null-value range. A flat series (min == max) gets a range
+     * of ±1 so it renders as a thin mid-height line (dashes survive as the
+     * line is drawn flat across the plot).
+     */
+    private double[] effectiveSeriesRange(ChartSeries series) {
+        if (!fillAllSeries || seriesList.isEmpty() || seriesList.get(0) == series) {
+            return new double[]{yAxisMin(), yAxisMax()};
+        }
+        double mn = Double.MAX_VALUE;
+        double mx = -Double.MAX_VALUE;
+        for (Double v : series.values()) {
+            if (v == null) continue;
+            mn = Math.min(mn, v);
+            mx = Math.max(mx, v);
+        }
+        if (mn == Double.MAX_VALUE) {
+            return new double[]{yAxisMin(), yAxisMax()}; // empty → shared
+        }
+        if (mx == mn) {
+            // Flat series (min == max, e.g. cash sweep at $1): straddle the
+            // value ±1 so it renders as a thin MID-height line.
+            return new double[]{mn - 1.0, mn + 1.0};
+        }
+        // Match the shared-range padding so filled series keep margin at the edges
+        double range = mx - mn;
+        double pad = range * 0.05;
+        return new double[]{mn - pad, mx + pad};
+    }
+
+    private double yAxisMin() {
+        return latestYRange[0];
+    }
+
+    private double yAxisMax() {
+        return latestYRange[1];
+    }
+
     private void drawSeries(TextGraphics g, ChartSeries series, int px, int py, int pw, int ph, double yMin, double yMax, Color bg) {
         int n = series.size();
+        double[] span = effectiveSeriesRange(series);
+        yMin = span[0];
+        yMax = span[1];
         double yRange = yMax - yMin;
         if (yRange == 0) yRange = 1;
 

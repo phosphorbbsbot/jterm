@@ -22,6 +22,27 @@ import java.util.List;
 
 /** Column/row table with headers and scrolling. */
 public class Table extends AbstractComponent implements TableModelListener {
+
+    /**
+     * Per-row style override, evaluated at draw time. Return a TextCell whose
+     * character/fg/bg are placeholder values — only its SGR modifiers are used
+     * (colors stay theme-driven). The selected+focused row ignores the provider
+     * so selection styling always wins. Null entries fall back to theme style.
+     */
+    public interface RowStyle {
+        io.jterm.style.TextCell apply(int row);
+    }
+
+    private RowStyle rowStyleProvider;
+
+    /**
+     * Installs a per-row style provider (e.g. bold for unread BBS threads,
+     * dim for old ones) or clears it with null.
+     */
+    public void setRowStyleProvider(RowStyle provider) {
+        this.rowStyleProvider = provider;
+        invalidate();
+    }
     private TableModel model;
     private volatile int selectedRow = 0;
     private volatile int scrollOffset = 0;
@@ -230,9 +251,21 @@ public class Table extends AbstractComponent implements TableModelListener {
         int rowCount = model == null ? 0 : model.getRowCount();
         for (int i = scrollOffset; i < rowCount && y < size.rows(); i++) {
             boolean selected = i == selectedRow;
-            var style = (selected && isFocused())
-                    ? new TextCell(' ', theme.selectionFg(), theme.selectionBg())
-                    : new TextCell(' ', theme.foreground(), theme.background());
+            io.jterm.style.TextCell style;
+            if (selected) {
+                // Selection always wins over the row-style provider (focused →
+                // selection colors; unfocused → theme row colors), so a provider
+                // like "bold unread" never restyles the cursor row.
+                style = (selected && isFocused())
+                        ? new TextCell(' ', theme.selectionFg(), theme.selectionBg())
+                        : new TextCell(' ', theme.foreground(), theme.background());
+            } else if (rowStyleProvider != null) {
+                var custom = rowStyleProvider.apply(i);
+                style = custom != null ? custom
+                        : new TextCell(' ', theme.foreground(), theme.background());
+            } else {
+                style = new TextCell(' ', theme.foreground(), theme.background());
+            }
             List<String> rowCells = new ArrayList<>();
             for (int c = 0; c < columnCount; c++) {
                 rowCells.add(model.getValueAt(i, c));

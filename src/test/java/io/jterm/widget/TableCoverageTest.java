@@ -6,6 +6,10 @@ import io.jterm.core.input.KeyStroke;
 import io.jterm.core.input.KeyType;
 import io.jterm.graphics.TextGraphics;
 import io.jterm.screen.ScreenBuffer;
+import io.jterm.style.AnsiColor;
+import io.jterm.style.SGR;
+import io.jterm.style.TextCell;
+
 import io.jterm.widget.model.DefaultTableModel;
 import io.jterm.widget.model.TableModel;
 import io.jterm.widget.model.TableModelListener;
@@ -131,6 +135,54 @@ class TableCoverageTest {
         var table = table5(6, 5, 10);
         assertTrue(table.handleKeyStroke(new KeyStroke(KeyType.END)));
         assertEquals(5, table.getSelectedRow());
+    }
+
+    // ===== row style provider (new/unread highlighting) =====
+
+    @Test
+    void rowStyleProvider_stylesNonSelectedRows() {
+        var table = new Table("A");
+        table.addRow("NEW");
+        table.addRow("NEW2");
+        table.addRow("OLD");
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 6)); // bounds first — scroll math uses size
+        table.setSelectedRow(1); // row 0 + row 2 keep provider style (not selected)
+        table.setRowStyleProvider(row ->
+                row == 2 ? new TextCell(' ', AnsiColor.DEFAULT, AnsiColor.DEFAULT, SGR.DIM)
+                         : new TextCell(' ', AnsiColor.DEFAULT, AnsiColor.DEFAULT, SGR.BOLD));
+        var buf = new ScreenBuffer(new TerminalSize(20, 6));
+        table.draw(new TextGraphics(buf));
+        assertTrue(buf.getCell(0, 1).modifiers().contains(SGR.BOLD), "row 0 (new) bold");
+        assertFalse(buf.getCell(0, 2).modifiers().contains(SGR.BOLD), "selected row 1: provider skipped");
+        assertTrue(buf.getCell(0, 3).modifiers().contains(SGR.DIM), "row 2 (old) dim");
+        assertFalse(buf.getCell(0, 3).modifiers().contains(SGR.BOLD), "row 2 (old) not bold");
+    }
+
+    @Test
+    void selectedRow_keepsSelectionStyleOverProvider() {
+        var table = new Table("A");
+        table.addRow("NEW");
+        table.addRow("OLD");
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        table.setRowStyleProvider(row ->
+                new TextCell(' ', AnsiColor.DEFAULT, AnsiColor.DEFAULT, SGR.BOLD));
+        table.setSelectedRow(1);
+        var buf = new ScreenBuffer(new TerminalSize(20, 5));
+        table.draw(new TextGraphics(buf));
+        // Selected row 1 must NOT be bold (selection style wins, provider skipped)
+        assertFalse(buf.getCell(0, 2).modifiers().contains(SGR.BOLD));
+        // Unselected row 0 still gets the provider bold
+        assertTrue(buf.getCell(0, 1).modifiers().contains(SGR.BOLD));
+    }
+
+    @Test
+    void nullRowStyleProvider_isAllowed() {
+        var table = new Table("A");
+        table.addRow("x");
+        assertDoesNotThrow(() -> table.setRowStyleProvider(null));
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 4));
+        var buf = new ScreenBuffer(new TerminalSize(20, 4));
+        assertDoesNotThrow(() -> table.draw(new TextGraphics(buf)));
     }
 
     // ===== column alignment =====

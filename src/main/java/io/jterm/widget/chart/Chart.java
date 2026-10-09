@@ -210,7 +210,9 @@ public class Chart extends AbstractComponent {
     }
 
     /**
-     * @return whether per-series fill-scale mode is enabled
+     * Whether per-series fill-scale mode is enabled.
+     *
+     * @return whether every non-primary series fills to the plot height
      */
     public boolean isFillAllSeries() {
         return fillAllSeries;

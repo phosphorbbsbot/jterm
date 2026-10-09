@@ -30,6 +30,12 @@ public class Table extends AbstractComponent implements TableModelListener {
      * so selection styling always wins. Null entries fall back to theme style.
      */
     public interface RowStyle {
+        /** Styles one table row.
+         *
+         * @param row the row index being rendered
+         * @return the styled cell (any unstyled cells keep theme defaults),
+         *         or {@code null} to fall back to the theme style entirely
+         */
         io.jterm.style.TextCell apply(int row);
     }
 
@@ -38,6 +44,8 @@ public class Table extends AbstractComponent implements TableModelListener {
     /**
      * Installs a per-row style provider (e.g. bold for unread BBS threads,
      * dim for old ones) or clears it with null.
+     *
+     * @param provider per-row style source, or {@code null} to clear
      */
     public void setRowStyleProvider(RowStyle provider) {
         this.rowStyleProvider = provider;

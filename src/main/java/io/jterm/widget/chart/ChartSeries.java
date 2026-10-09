@@ -30,7 +30,13 @@ public record ChartSeries(String name, List<Double> values, ChartType type, Colo
 
     // ── Compat constructors (pre-palette call sites unchanged) ──────
 
-    /** Canonical-shaped 4-arg convenience: no per-point palette. */
+    /** Canonical-shaped 4-arg convenience: no per-point palette.
+     *
+     * @param name   series name shown in the legend
+     * @param values the y-values; null becomes an empty series
+     * @param type   renderer type (LINE/BAR/SCATTER)
+     * @param color  base color when no per-point palette applies
+     */
     public ChartSeries(String name, List<Double> values, ChartType type, Color color) {
         this(name, values, type, color, null);
     }
@@ -53,7 +59,11 @@ public record ChartSeries(String name, List<Double> values, ChartType type, Colo
         }
     }
 
-    /** Effective render color for point {@code i}: palette override or base color. */
+    /** Effective render color for point {@code i}: palette override or base color.
+     *
+     * @param i the point index (clamped behavior: out-of-range returns base color)
+     * @return the palette color for the point, or the series base color
+     */
     public Color colorAt(int i) {
         if (pointColors != null && i < pointColors.size() && pointColors.get(i) != null) {
             return pointColors.get(i);

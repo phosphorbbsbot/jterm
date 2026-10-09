@@ -35,17 +35,27 @@ public final class RegressionSeries {
 
     private RegressionSeries() { }
 
-    /** σ (population, fit space) of residuals from the most recent {@code of} call. */
+    /** σ (population, fit space) of residuals from the most recent {@code of} call.
+     * @return the last fit's σ wrapped in Optional; empty is never returned —
+     *         the value is {@code NaN} before any fit has run
+     */
     public static Optional<Double> lastSigmaLog() {
         return Optional.of(lastSigma);
     }
 
-    /** σ of the last fit; {@code NaN} when no fit has run yet. */
+    /** σ of the last fit; {@code NaN} when no fit has run yet.
+     * @return the σ of the most recent fit, or {@code NaN}
+     */
     public static double lastSigma() {
         return Double.isNaN(lastSigma) ? Double.NaN : lastSigma;
     }
 
-    /** Linear-space regression + bands (straight on a linear axis). */
+    /** Linear-space regression + bands (straight on a linear axis).
+     *
+     * @param src           the plotted series to regress
+     * @param sigmaMultiple band width in multiples of the residual σ
+     * @return trend + ±σ band series spanning the source series' index range
+     */
     public static List<ChartSeries> of(ChartSeries src, double sigmaMultiple) {
         return of(src, sigmaMultiple, false);
     }

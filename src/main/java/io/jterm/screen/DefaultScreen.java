@@ -360,6 +360,14 @@ public class DefaultScreen implements Screen {
             if (anyModDisabled) {
                 sb.append(AnsiCodes.CSI).append(new String(currentFg.fgSequence(), StandardCharsets.UTF_8)).append("m");
                 sb.append(AnsiCodes.CSI).append(new String(currentBg.bgSequence(), StandardCharsets.UTF_8)).append("m");
+                // Shared reset families: ESC[22m clears BOTH bold and dim (and
+                // ESC[23m clears italic+strikethrough). The disable above only
+                // removed the departing modifier — re-assert every modifier the
+                // tracker still holds so the terminal's state matches ours
+                // (fixes bold↔dim transitions degrading on scroll repaints).
+                for (SGR mod : currentMods) {
+                    sb.append(new String(AnsiCodes.enable(mod), StandardCharsets.UTF_8));
+                }
             }
 
             return changed ? sb.toString().getBytes(StandardCharsets.UTF_8) : new byte[0];

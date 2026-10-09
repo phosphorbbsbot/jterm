@@ -47,6 +47,47 @@ class SgrStateTrackerTest {
         assertTrue(s.contains("\033[0m"), "Expected SGR reset, got: " + s);
     }
 
+    /** Mini ANSI SGR state machine: replays emitted bytes, tracks terminal mods. */
+    private java.util.Set<SGR> replayTerminal(String emitted) {
+        var mods = new java.util.HashSet<SGR>();
+        for (String seq : emitted.split("\u001b\\[")) {
+            if (seq.isEmpty()) continue;
+            int code = Integer.parseInt(seq.replace("m", "").trim());
+            switch (code) {
+                case 0 -> mods.clear();
+                case 1 -> mods.add(SGR.BOLD);
+                case 2 -> mods.add(SGR.DIM);
+                case 22 -> { mods.remove(SGR.BOLD); mods.remove(SGR.DIM); }
+                default -> { }
+            }
+        }
+        return mods;
+    }
+
+    @Test
+    void boldToDim_replayMatchesTarget() {
+        var tracker = new DefaultScreen.SgrStateTracker();
+        var bold = new TextCell('A', AnsiColor.DEFAULT, AnsiColor.DEFAULT, SGR.BOLD);
+        tracker.transitionTo(bold);
+        var dim = new TextCell('A', AnsiColor.DEFAULT, AnsiColor.DEFAULT, SGR.DIM);
+        String all = new String(tracker.transitionTo(dim), java.nio.charset.StandardCharsets.UTF_8);
+        var terminalState = replayTerminal("\u001b[1m" + all);
+        assertTrue(terminalState.equals(java.util.Set.of(SGR.DIM)),
+                "Terminal replayed to " + terminalState + ", expected {DIM}. Emitted: " + all);
+    }
+
+    @Test
+    void dimToBold_replayMatchesTarget() {
+        var tracker = new DefaultScreen.SgrStateTracker();
+        var dim = new TextCell('A', AnsiColor.DEFAULT, AnsiColor.DEFAULT, SGR.DIM);
+        tracker.transitionTo(dim);
+        var bold = new TextCell('A', AnsiColor.DEFAULT, AnsiColor.DEFAULT, SGR.BOLD);
+        String all = new String(tracker.transitionTo(bold), java.nio.charset.StandardCharsets.UTF_8);
+        var terminalState = replayTerminal("\u001b[2m" + all);
+        assertTrue(terminalState.equals(java.util.Set.of(SGR.BOLD)),
+                "Terminal replayed to " + terminalState + ", expected {BOLD}. Emitted: " + all);
+    }
+
     @Test
     void removingBoldWithColorEmitsIncremental() {
         // When target still has non-default colors, use incremental disable

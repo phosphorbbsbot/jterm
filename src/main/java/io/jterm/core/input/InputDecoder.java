@@ -129,13 +129,23 @@ public class InputDecoder {
         return Optional.of(new KeyStroke(KeyType.UNKNOWN));
     }
 
+    /** Realistic CSI sequences top out around a dozen params; anything past
+     *  this is a hostile flood, not a keyboard. Hard cap stops unbounded
+     *  StringBuilder growth (OOM vector on networked terminals). */
+    private static final int MAX_CSI_PARAMS = 64;
+
     private Optional<KeyStroke> readCsiSequence() throws IOException {
-        StringBuilder params = new StringBuilder();
+        StringBuilder params = new StringBuilder(MAX_CSI_PARAMS);
         int ch;
         while ((ch = input.read()) != -1) {
             char c = (char) ch;
             if (c >= '0' && c <= '9' || c == ';' || c == '?') {
                 params.append(c);
+                if (params.length() > MAX_CSI_PARAMS) {
+                    // Overlong sequence: abandon it as.UNKNOWN without
+                    // consuming further bytes of the flood.
+                    return Optional.of(new KeyStroke(KeyType.UNKNOWN));
+                }
             } else if (c >= 0x40 && c <= 0x7e) { // final byte
                 return Optional.of(mapCsi(params.toString(), c));
             } else {

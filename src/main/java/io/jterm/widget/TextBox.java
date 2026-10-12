@@ -34,13 +34,20 @@ public class TextBox extends AbstractComponent {
      * still be edited, just not grown.
      *
      * @param maxLength maximum input characters, 0 for unlimited
+     * @return configured max length prior to this call, for chaining
      */
-    public void setMaxLength(int maxLength) {
+    public int setMaxLength(int maxLength) {
         if (maxLength < 0) throw new IllegalArgumentException("maxLength must be >= 0");
+        int previous = this.maxLength;
         this.maxLength = maxLength;
+        return previous;
     }
 
-    /** Returns the configured max length (0 = unlimited). */
+    /**
+     * Returns the configured max length.
+     *
+     * @return maximum input characters accepted via user input, 0 = unlimited
+     */
     public int getMaxLength() { return maxLength; }
 
     /** True when a user insert of {@code n} chars is allowed right now. */

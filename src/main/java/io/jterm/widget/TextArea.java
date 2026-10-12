@@ -50,13 +50,20 @@ public class TextArea extends AbstractComponent {
      * Caps the total characters a user can put into this area.
      *
      * @param maxChars maximum characters including newlines, 0 for unlimited
+     * @return configured max prior to this call, for chaining
      */
-    public void setMaxChars(int maxChars) {
+    public int setMaxChars(int maxChars) {
         if (maxChars < 0) throw new IllegalArgumentException("maxChars must be >= 0");
+        int previous = this.maxChars;
         this.maxChars = maxChars;
+        return previous;
     }
 
-    /** Returns the configured total-character cap (0 = unlimited). */
+    /**
+     * Returns the configured total-character cap.
+     *
+     * @return total characters accepted via user edits, 0 = unlimited
+     */
     public int getMaxChars() { return maxChars; }
 
     private int totalChars() {

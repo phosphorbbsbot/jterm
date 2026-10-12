@@ -37,6 +37,39 @@ import java.util.List;
 public class TextArea extends AbstractComponent {
 
     private final List<String> lines = new ArrayList<>();
+
+    /**
+     * Maximum total characters accepted via user edits (typing, newline,
+     * completion/paste inserts). 0 = unlimited. Trusted prefills via
+     * {@link #setText(String)} are kept intact even when longer, but user
+     * edits cannot grow the content while at/past the cap.
+     */
+    private int maxChars = 0;
+
+    /**
+     * Caps the total characters a user can put into this area.
+     *
+     * @param maxChars maximum characters including newlines, 0 for unlimited
+     */
+    public void setMaxChars(int maxChars) {
+        if (maxChars < 0) throw new IllegalArgumentException("maxChars must be >= 0");
+        this.maxChars = maxChars;
+    }
+
+    /** Returns the configured total-character cap (0 = unlimited). */
+    public int getMaxChars() { return maxChars; }
+
+    private int totalChars() {
+        int n = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            n += lines.get(i).length() + 1;  // + newline between lines
+        }
+        return Math.max(0, n - (lines.isEmpty() ? 0 : 1));
+    }
+
+    private boolean canAcceptInsert(int n) {
+        return maxChars <= 0 || totalChars() + n <= maxChars;
+    }
     private volatile int cursorRow = 0;
     private volatile int cursorCol = 0;
     private volatile int viewportRow = 0;   // vertical scroll offset (which text row is at top of viewport)
@@ -381,6 +414,7 @@ public class TextArea extends AbstractComponent {
     // ── Text editing operations ───────────────────────────────
 
     private void insertChar(char c) {
+        if (!canAcceptInsert(1)) return;
         String line = lines.get(cursorRow);
         String newLine = line.substring(0, cursorCol) + c + line.substring(cursorCol);
         lines.set(cursorRow, newLine);
@@ -395,6 +429,7 @@ public class TextArea extends AbstractComponent {
      * @param text the text to insert
      */
     private void insertTextAtCursor(String text) {
+        if (!canAcceptInsert(text.length())) return;
         String line = lines.get(cursorRow);
         String newLine = line.substring(0, cursorCol) + text + line.substring(cursorCol);
         lines.set(cursorRow, newLine);
@@ -403,6 +438,7 @@ public class TextArea extends AbstractComponent {
     }
 
     private void splitLine() {
+        if (!canAcceptInsert(1)) return;
         String line = lines.get(cursorRow);
         String before = line.substring(0, cursorCol);
         String after = line.substring(cursorCol);

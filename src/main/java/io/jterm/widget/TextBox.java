@@ -18,6 +18,35 @@ import io.jterm.style.ThemeManager;
 /** Single-line text input with optional ghost text (inline completion) support. */
 public class TextBox extends AbstractComponent {
     private volatile String value = "";
+    /**
+     * Maximum characters accepted via user input (typing or completion
+     * accept). 0 = unlimited. Trusted programmatic prefills via
+     * {@link #setValue(String)} are kept intact even when longer — the cap
+     * only stops FURTHER growth by the user, protecting both resource
+     * limits on networked hosts and prefill-then-edit workflows.
+     */
+    private int maxLength = 0;
+
+    /**
+     * Caps the characters a user can add to this box. When the current
+     * value is at or past the limit, typed characters and completion
+     * accepts are refused. Existing longer values (trusted prefills) may
+     * still be edited, just not grown.
+     *
+     * @param maxLength maximum input characters, 0 for unlimited
+     */
+    public void setMaxLength(int maxLength) {
+        if (maxLength < 0) throw new IllegalArgumentException("maxLength must be >= 0");
+        this.maxLength = maxLength;
+    }
+
+    /** Returns the configured max length (0 = unlimited). */
+    public int getMaxLength() { return maxLength; }
+
+    /** True when a user insert of {@code n} chars is allowed right now. */
+    private boolean canAcceptInsert(int n) {
+        return maxLength <= 0 || value.length() + n <= maxLength;
+    }
     private volatile int cursorPosition = 0;
     private volatile int viewportOffset = 0;
     private volatile int preferredColumns = 20;
@@ -294,6 +323,9 @@ public class TextBox extends AbstractComponent {
         if (keyStroke.type() == KeyType.TAB) {
             String accepted = ghostTextSupport.tryAcceptTab();
             if (accepted != null) {
+                if (!canAcceptInsert(accepted.length())) {
+                    return false;  // completion would exceed the cap
+                }
                 value = value.substring(0, cursorPosition) + accepted + value.substring(cursorPosition);
                 cursorPosition += accepted.length();
                 invalidate();
@@ -314,6 +346,10 @@ public class TextBox extends AbstractComponent {
         ghostTextSupport.clear();
         switch (keyStroke.type()) {
             case CHARACTER -> {
+                if (!canAcceptInsert(1)) {
+                    ghostTextSupport.clear();
+                    return true;   // consumed but refused: input at cap
+                }
                 char ch = keyStroke.character();
                 if (forceUppercase) ch = Character.toUpperCase(ch);
                 value = value.substring(0, cursorPosition) + ch + value.substring(cursorPosition);

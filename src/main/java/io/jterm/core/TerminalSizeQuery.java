@@ -66,7 +66,7 @@ public final class TerminalSizeQuery {
                     return new TerminalSize(cols, rows);
                 }
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException | InterruptedException | NumberFormatException e) {
             // Query failed — caller falls back
         }
         return null;

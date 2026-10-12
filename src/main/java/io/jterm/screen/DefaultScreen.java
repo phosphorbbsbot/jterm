@@ -220,12 +220,23 @@ public class DefaultScreen implements Screen {
                 var cell = backBuffer.getCell(c, r);
                 byte[] sgrBytes = sgrState.transitionTo(cell);
                 if (sgrBytes.length > 0) terminal.writeRaw(sgrBytes);
-                terminal.putCharacter(cell.character().charAt(0));
+                terminal.putCharacter(emittable(cell));
             }
         }
         // Re-enable auto-wrap for normal operation (delta refreshes, etc.)
         terminal.writeRaw(AnsiCodes.ENABLE_AUTOWRAP.getBytes(StandardCharsets.UTF_8));
         terminal.flush();
+    }
+
+    /**
+     * Emit-time defense in depth: never write a control character to the
+     * terminal stream, even if one reached a buffer through a path that
+     * bypassed ScreenBuffer sanitization (e.g. an externally-owned buffer or
+     * a future direct-cell writer).
+     */
+    private static char emittable(TextCell cell) {
+        char c = cell.character().charAt(0);
+        return (c >= 32 && c != 127) ? c : ' ';
     }
 
     private void doDeltaRefresh() throws IOException {
@@ -241,7 +252,7 @@ public class DefaultScreen implements Screen {
             }
             byte[] sgrBytes = sgrState.transitionTo(diff.cell());
             if (sgrBytes.length > 0) terminal.writeRaw(sgrBytes);
-            terminal.putCharacter(diff.cell().character().charAt(0));
+            terminal.putCharacter(emittable(diff.cell()));
             lastRow = diff.row();
             lastCol = diff.column();
             if (diff.cell().isDoubleWidth()) lastCol++;

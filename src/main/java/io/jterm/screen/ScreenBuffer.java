@@ -64,7 +64,28 @@ public class ScreenBuffer {
      */
     public synchronized void setCell(int col, int row, TextCell cell) {
         if (col < 0 || col >= columns || row < 0 || row >= rows) return;
-        cells[row * columns + col] = cell;
+        cells[row * columns + col] = sanitize(cell);
+    }
+
+    /**
+     * Security filter: control characters (C0, DEL, and lone surrogates) are
+     * replaced with a space before entering the buffer. TextCell content is
+     * emitted verbatim on refresh; a hostile ESC reaching the wire would be
+     * re-interpreted by the client terminal as an escape sequence (title
+     * spoofing via OSC 0, hyperlink phishing via OSC 8, clipboard overwrite
+     * via OSC 52, cursor repositioning, screen desync). Untrusted text
+     * (chat, usernames, message bodies) flows through this funnel in BBS
+     * deployments, so the buffer itself is the choke point.
+     *
+     * @param cell the candidate cell
+     * @return a cell whose character is guaranteed printable
+     */
+    private static TextCell sanitize(TextCell cell) {
+        String ch = cell.character();
+        if (ch.isEmpty()) return cell;
+        char c = ch.charAt(0);
+        if (c >= 32 && c != 127 && !Character.isSurrogate(c)) return cell;
+        return ' ' == c ? cell : new TextCell(" ", cell.fg(), cell.bg(), cell.modifiers());
     }
 
     /**

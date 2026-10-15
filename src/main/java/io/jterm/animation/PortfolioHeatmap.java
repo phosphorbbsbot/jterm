@@ -6,11 +6,6 @@ import io.jterm.style.AnsiColor;
 import io.jterm.style.SGR;
 import io.jterm.style.TextCell;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
@@ -22,16 +17,17 @@ import java.util.function.Supplier;
  * color reflects daily unrealized P&amp;L: green for gains, red for losses,
  * with brightness proportional to magnitude.
  *
- * <p>Data is supplied by a {@code PositionDataSupplier}; the default supplier
- * reads from the family-office portfolio tables (active positions + latest
- * quotes or daily prices) and falls back to decorative random data when the
- * driver or database is unavailable.</p>
+ * <p>Data is supplied by a {@code java.util.function.Supplier} of positions;
+ * the library is database-agnostic. When no supplier is given — or it returns
+ * no usable data — the heatmap renders built-in decorative sample data.
+ * Callers that want live positions supply them via the two-argument
+ * constructor.</p>
  */
 public class PortfolioHeatmap implements AnimatedBackground {
 
     private static final int TARGET_FPS = 4;
 
-    // Decorative fallback data used when the portfolio database is unreachable.
+    // Built-in decorative data rendered when no supplier provides positions.
     private static final List<Position> FALLBACK_POSITIONS = List.of(
             new Position("AAPL", 100, 185.00, 189.52),
             new Position("GOOGL", 50, 138.20, 141.80),
@@ -55,12 +51,14 @@ public class PortfolioHeatmap implements AnimatedBackground {
     private volatile List<Position> positions;
 
     /**
-     * Creates a portfolio heatmap with data loaded from the default source.
+     * Creates a portfolio heatmap that renders built-in decorative sample
+     * data. Pass a custom {@code Supplier} of positions via the two-argument
+     * constructor to render live data.
      *
      * @param preferredSize the preferred terminal size
      */
     public PortfolioHeatmap(TerminalSize preferredSize) {
-        this(preferredSize, defaultSupplier());
+        this(preferredSize, () -> null);
     }
 
     /**
@@ -117,7 +115,7 @@ public class PortfolioHeatmap implements AnimatedBackground {
                 .toArray();
 
         // Cap weights so no single position can swallow the whole screen; this
-        // keeps a visible grid even when one position dominates the portfolio.
+        // keeps a visible grid even when one position dominates everything else.
         double cappedTotal = 0.0;
         double cap = 0.35;
         for (int i = 0; i < weights.length; i++) {
@@ -380,66 +378,6 @@ public class PortfolioHeatmap implements AnimatedBackground {
         if (this.positions == null || this.positions.isEmpty()) {
             this.positions = FALLBACK_POSITIONS;
         }
-    }
-
-    private static Supplier<List<Position>> defaultSupplier() {
-        return () -> {
-            String url = System.getProperty("portfolio.url");
-            String user = System.getProperty("portfolio.user");
-            String password = System.getProperty("portfolio.password");
-            if (url == null || url.isBlank()) {
-                return FALLBACK_POSITIONS;
-            }
-
-            List<Position> loaded = new ArrayList<>();
-            String sql =
-                "SELECT p.symbol, p.quantity, p.cost_basis, q.close " +
-                "FROM portfolio.positions p " +
-                "LEFT JOIN portfolio.latest_quotes q ON q.ticker = p.symbol " +
-                "WHERE p.status = 'active' AND q.close IS NOT NULL";
-
-            try (Connection conn = DriverManager.getConnection(url, user == null ? "" : user, password == null ? "" : password);
-                 PreparedStatement stmt = conn.prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    String symbol = rs.getString("symbol");
-                    int quantity = rs.getInt("quantity");
-                    double costBasis = rs.getDouble("cost_basis");
-                    double close = rs.getDouble("close");
-                    loaded.add(new Position(symbol, quantity, costBasis, close));
-                }
-            } catch (Exception e) {
-                return FALLBACK_POSITIONS;
-            }
-
-            // If no latest_quotes rows matched, fall back to screener.daily_prices.
-            if (loaded.isEmpty()) {
-                String fallbackSql =
-                    "SELECT p.symbol, p.quantity, p.cost_basis, dp.close " +
-                    "FROM portfolio.positions p " +
-                    "LEFT JOIN (" +
-                    "  SELECT ticker, close, " +
-                    "         ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn " +
-                    "  FROM screener.daily_prices " +
-                    ") dp ON dp.ticker = p.symbol AND dp.rn = 1 " +
-                    "WHERE p.status = 'active' AND dp.close IS NOT NULL";
-                try (Connection conn = DriverManager.getConnection(url, user == null ? "" : user, password == null ? "" : password);
-                     PreparedStatement stmt = conn.prepareStatement(fallbackSql);
-                     ResultSet rs = stmt.executeQuery()) {
-                    while (rs.next()) {
-                        String symbol = rs.getString("symbol");
-                        int quantity = rs.getInt("quantity");
-                        double costBasis = rs.getDouble("cost_basis");
-                        double close = rs.getDouble("close");
-                        loaded.add(new Position(symbol, quantity, costBasis, close));
-                    }
-                } catch (Exception e) {
-                    return FALLBACK_POSITIONS;
-                }
-            }
-
-            return loaded.isEmpty() ? FALLBACK_POSITIONS : loaded;
-        };
     }
 
     /** Immutable portfolio position: symbol, quantity, cost basis, latest close. */

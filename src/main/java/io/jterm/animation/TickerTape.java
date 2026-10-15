@@ -6,11 +6,6 @@ import io.jterm.style.AnsiColor;
 import io.jterm.style.SGR;
 import io.jterm.style.TextCell;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -18,10 +13,11 @@ import java.util.function.Supplier;
 /**
  * Animated stock ticker tape background. Items scroll right-to-left across a
  * single row: symbol, latest close price, and day change percentage. Green for
- * up, red for down. Data is supplied by a {@code PriceDataSupplier}; the default
- * supplier attempts to read from the family-office screener database and falls
- * back to a small built-in sample list when the driver or database is not
- * available.
+ * up, red for down. Data is supplied by a {@code java.util.function.Supplier}
+ * of items; the library is database-agnostic. When no supplier is given — or
+ * it returns no usable data — the tape scrolls built-in decorative sample
+ * data. Callers that want live quotes supply them via the two-argument
+ * constructor.
  */
 public class TickerTape implements AnimatedBackground {
 
@@ -30,7 +26,7 @@ public class TickerTape implements AnimatedBackground {
     private static final String SEPARATOR = "  |  ";
     private static final long REFRESH_INTERVAL_MS = 60_000;
 
-    // Default sample data used when the screener database cannot be reached.
+    // Built-in decorative data scrolled when no supplier provides items.
     private static final List<TickerItem> FALLBACK_ITEMS = List.of(
             new TickerItem("AAPL", 189.52, 186.00),
             new TickerItem("GOOGL", 141.80, 140.10),
@@ -51,12 +47,14 @@ public class TickerTape implements AnimatedBackground {
     private volatile long lastRefreshMs;
 
     /**
-     * Creates a ticker tape with data loaded from the default screener source.
+     * Creates a ticker tape that scrolls built-in decorative sample data.
+     * Pass a custom {@code Supplier} of items via the two-argument constructor
+     * to render live quotes.
      *
      * @param preferredSize preferred terminal size
      */
     public TickerTape(TerminalSize preferredSize) {
-        this(preferredSize, defaultSupplier());
+        this(preferredSize, () -> null);
     }
 
     /**
@@ -236,46 +234,6 @@ public class TickerTape implements AnimatedBackground {
             this.items = FALLBACK_ITEMS;
         }
         lastRefreshMs = System.currentTimeMillis();
-    }
-
-    private static Supplier<List<TickerItem>> defaultSupplier() {
-        return () -> {
-            String url = System.getProperty("screener.url");
-            String user = System.getProperty("screener.user");
-            String password = System.getProperty("screener.password");
-            if (url == null || url.isBlank()) {
-                return FALLBACK_ITEMS;
-            }
-
-            List<TickerItem> loaded = new ArrayList<>();
-            String sql =
-                "WITH latest AS (" +
-                "  SELECT ticker, date, close, " +
-                "         LAG(close) OVER (PARTITION BY ticker ORDER BY date) AS prev_close " +
-                "  FROM screener.daily_prices" +
-                "), ranked AS (" +
-                "  SELECT ticker, date, close, prev_close, " +
-                "         ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn " +
-                "  FROM latest" +
-                ") " +
-                "SELECT ticker, close, prev_close FROM ranked WHERE rn = 1 AND prev_close IS NOT NULL " +
-                "ORDER BY ticker";
-
-            try (Connection conn = DriverManager.getConnection(url, user == null ? "" : user, password == null ? "" : password);
-                 PreparedStatement stmt = conn.prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    String ticker = rs.getString("ticker");
-                    double close = rs.getDouble("close");
-                    double prev = rs.getDouble("prev_close");
-                    loaded.add(new TickerItem(ticker, close, prev));
-                }
-            } catch (Exception e) {
-                return FALLBACK_ITEMS;
-            }
-
-            return loaded.isEmpty() ? FALLBACK_ITEMS : loaded;
-        };
     }
 
     /** Immutable ticker item: symbol, latest close, and previous close. */

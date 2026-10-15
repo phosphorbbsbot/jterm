@@ -143,6 +143,29 @@ public class AnsiTerminal implements Terminal {
         }
     }
 
+    /**
+     * Parses the output of {@code stty size} — two whitespace-separated
+     * integers "rows cols" — into a {@link TerminalSize}. Returns {@code null}
+     * when the input is null, blank, not exactly two fields, or non-numeric;
+     * the caller then falls back to the 80×24 default. Pure helper: no I/O,
+     * so tests can drive every parse branch without a real console.
+     *
+     * @param output raw {@code stty size} output (may be null)
+     * @return the parsed size, or {@code null} if unparseable
+     */
+    static TerminalSize parseSttySize(String output) {
+        if (output == null) return null;
+        var parts = output.trim().split("\\s+");
+        if (parts.length == 2) {
+            try {
+                return new TerminalSize(Integer.parseInt(parts[1]), Integer.parseInt(parts[0]));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     private static TerminalSize queryTerminalSize() {
         // 0. No real console (e.g. Maven Surefire) — skip both ESC[18t and stty.
         if (System.console() == null) return new TerminalSize(80, 24);
@@ -169,9 +192,9 @@ public class AnsiTerminal implements Terminal {
             reader.join(200);
             var bytes = ref.get();
             if (bytes != null) {
-                var parts = new String(bytes, StandardCharsets.UTF_8).trim().split("\\s+");
-                if (parts.length == 2) {
-                    return new TerminalSize(Integer.parseInt(parts[1]), Integer.parseInt(parts[0]));
+                var parsed = parseSttySize(new String(bytes, StandardCharsets.UTF_8));
+                if (parsed != null) {
+                    return parsed;
                 }
             }
         } catch (Exception e) {

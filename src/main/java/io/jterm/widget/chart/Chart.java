@@ -648,13 +648,20 @@ public class Chart extends AbstractComponent {
      * that yields 3-6 ticks, then generates ticks at multiples of that step
      * that fall within [yMin, yMax].
      */
-    private static double[] niceTicks(double yMin, double yMax, int targetTicks) {
+    static double[] niceTicks(double yMin, double yMax, int targetTicks) {
         if (yMax <= yMin) return new double[]{yMin};
 
         double range = yMax - yMin;
-        // Candidate step sizes — covers all scales from pennies to thousands
+        // Candidate step sizes — covers all scales from pennies to trillions
         double[] steps = {1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000,
-                          10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000};
+                          10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000,
+                          2_500_000.0, 5_000_000.0, 10_000_000.0, 25_000_000.0,
+                          50_000_000.0, 100_000_000.0, 250_000_000.0, 500_000_000.0,
+                          1_000_000_000.0, 2_500_000_000.0, 5_000_000_000.0,
+                          10_000_000_000.0, 25_000_000_000.0, 50_000_000_000.0,
+                          100_000_000_000.0, 250_000_000_000.0, 500_000_000_000.0,
+                          1_000_000_000_000.0, 2_500_000_000_000.0, 5_000_000_000_000.0,
+                          10_000_000_000_000.0};
 
         // Also handle sub-1 ranges (penny stocks etc.) with fractional steps
         double[] fracSteps = {0.01, 0.02, 0.05, 0.1, 0.25, 0.5};

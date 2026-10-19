@@ -19,6 +19,7 @@ public class MockTerminal implements Terminal {
     private final List<TerminalResizeListener> listeners = new ArrayList<>();
     private final StringBuilder output = new StringBuilder();
     private boolean closed;
+    private boolean syncOutputSupported;
     private io.jterm.core.input.InputDecoder decoder;
 
     /**
@@ -258,6 +259,27 @@ public class MockTerminal implements Terminal {
     @Override
     public void close() throws IOException {
         closed = true;
+    }
+
+    /**
+     * Return whether synchronized output (DEC private mode 2026) is enabled
+     * for this mock terminal.
+     *
+     * @return true if synchronized output is enabled, false otherwise
+     */
+    @Override
+    public boolean syncOutputSupported() {
+        return syncOutputSupported;
+    }
+
+    /**
+     * Enable or disable synchronized output support on this mock terminal.
+     *
+     * @param supported true to enable, false to disable
+     */
+    @Override
+    public void setSyncOutputSupported(boolean supported) {
+        this.syncOutputSupported = supported;
     }
 
     /**

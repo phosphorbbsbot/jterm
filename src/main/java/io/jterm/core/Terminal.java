@@ -174,6 +174,24 @@ public interface Terminal extends AutoCloseable {
     void close() throws IOException;
 
     /**
+     * Returns whether this terminal supports synchronized output updates
+     * (DEC private mode 2026, BSU/ESU bracketing).
+     *
+     * @return true if synchronized output is supported, false by default
+     */
+    default boolean syncOutputSupported() {
+        return false;
+    }
+
+    /**
+     * Sets whether this terminal should be treated as supporting synchronized
+     * output. The default implementation is a no-op.
+     *
+     * @param supported true to enable synchronized output support
+     */
+    default void setSyncOutputSupported(boolean supported) {}
+
+    /**
      * Write raw bytes directly to the terminal output.
      *
      * @param data the raw bytes to write

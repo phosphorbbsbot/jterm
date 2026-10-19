@@ -26,6 +26,10 @@ public final class AnsiCodes {
     public static final String DISABLE_AUTOWRAP = CSI + "?7l";
     /** ANSI sequence to enable line wrapping. */
     public static final String ENABLE_AUTOWRAP = CSI + "?7h";
+    /** DEC private mode 2026 — begin a synchronized (BSU) screen update. */
+    public static final String BEGIN_SYNC_UPDATE = CSI + "?2026h";
+    /** DEC private mode 2026 — end a synchronized (ESU) screen update. */
+    public static final String END_SYNC_UPDATE = CSI + "?2026l";
 
     private AnsiCodes() {}
 

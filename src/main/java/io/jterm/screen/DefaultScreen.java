@@ -13,6 +13,7 @@ import io.jterm.style.ThemeManager;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
+import java.util.List;
 
 /** Double-buffered screen with delta refresh and SGR state batching. */
 public class DefaultScreen implements Screen {
@@ -25,6 +26,8 @@ public class DefaultScreen implements Screen {
     /** Persistent SGR state tracker — survives across refresh calls so
      *  delta refreshes know the terminal's actual current SGR state. */
     private final SgrStateTracker sgrState = new SgrStateTracker();
+    /** True while a BEGIN_SYNC_UPDATE (DEC 2026) bracket is open on the terminal. */
+    private volatile boolean syncBracketActive = false;
 
     /**
      * Return the terminal.
@@ -182,19 +185,61 @@ public class DefaultScreen implements Screen {
             frontBuffer.copyFrom(backBuffer);
             return;
         }
+        // Compute the refresh path and whether a frame will be emitted BEFORE
+        // writing anything, so empty deltas stay byte-for-byte silent (no lone
+        // 2026 brackets) while real frames are wrapped in BSU/ESU (DEC 2026)
+        // when the terminal declares synchronized-output support.
+        List<ScreenBuffer.CellDiff> deltas = null;
+        boolean frameEmitted;
         if (type == RefreshType.COMPLETE) {
-            doCompleteRefresh();
+            frameEmitted = true;
         } else if (type == RefreshType.DELTA) {
-            doDeltaRefresh();
+            deltas = backBuffer.diffFrom(frontBuffer);
+            frameEmitted = !deltas.isEmpty();
         } else {
-            var diffs = backBuffer.diffFrom(frontBuffer);
-            if (diffs.size() > (frontBuffer.size().area() / 2)) {
+            deltas = backBuffer.diffFrom(frontBuffer);
+            boolean large = deltas.size() > (frontBuffer.size().area() / 2);
+            frameEmitted = large || !deltas.isEmpty();
+        }
+        if (!frameEmitted) {
+            frontBuffer.copyFrom(backBuffer);
+            return;
+        }
+        boolean bracket = terminal.syncOutputSupported();
+        if (bracket) {
+            syncBracketActive = true;
+            terminal.writeRaw(AnsiCodes.BEGIN_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8));
+        }
+        try {
+            if (type == RefreshType.COMPLETE) {
                 doCompleteRefresh();
+            } else if (type == RefreshType.DELTA) {
+                doDeltaRefresh(deltas);
             } else {
-                doDeltaRefresh();
+                if (deltas.size() > (frontBuffer.size().area() / 2)) {
+                    doCompleteRefresh();
+                } else {
+                    doDeltaRefresh(deltas);
+                }
+            }
+        } finally {
+            if (bracket) {
+                // ESU goes out after the frame's flush; emit it even if the
+                // frame write failed so the 2026 bracket never dangles.
+                terminal.writeRaw(AnsiCodes.END_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8));
+                syncBracketActive = false;
             }
         }
         frontBuffer.copyFrom(backBuffer);
+    }
+
+    /**
+     * Test hook: whether a synchronized-output (DEC 2026) bracket is currently open.
+     *
+     * @return true between BSU and ESU emissions
+     */
+    boolean syncBracketActive() {
+        return syncBracketActive;
     }
 
     private void doCompleteRefresh() throws IOException {
@@ -239,10 +284,7 @@ public class DefaultScreen implements Screen {
         return (c >= 32 && c != 127) ? c : ' ';
     }
 
-    private void doDeltaRefresh() throws IOException {
-        var diffs = backBuffer.diffFrom(frontBuffer);
-        if (diffs.isEmpty()) return;
-
+    private void doDeltaRefresh(List<ScreenBuffer.CellDiff> diffs) throws IOException {
         int lastRow = -1;
         int lastCol = -1;
 

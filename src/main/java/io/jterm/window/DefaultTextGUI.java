@@ -49,6 +49,18 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     private long lastAutoRefreshNanos = System.nanoTime();
 
     /**
+     * When true (the default), the event loop drains pending keystrokes in
+     * batches and renders once per iteration (frame coalescing) instead of
+     * rendering once per keystroke: N pending keys → ONE render. When false,
+     * the loop keeps the original one-processInput-per-iteration behavior
+     * byte-for-byte.
+     */
+    private volatile boolean coalesceInput = true;
+
+    /** Max keys the event loop drains per iteration when coalescing. */
+    private static final int COALESCE_MAX_KEYS = 32;
+
+    /**
      * Create a GUI backed by the given screen.
      *
      * @param screen the screen to render to
@@ -204,6 +216,28 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     }
 
     /**
+     * Set whether the event loop coalesces input: drains pending keystrokes
+     * in batches and renders once per iteration, instead of rendering once
+     * per keystroke.
+     *
+     * @param coalesce true to enable frame coalescing (default), false to
+     *                 restore the legacy one-keystroke-per-iteration behavior
+     */
+    public void setCoalesceInput(boolean coalesce) {
+        this.coalesceInput = coalesce;
+    }
+
+    /**
+     * Return whether input coalescing is enabled.
+     *
+     * @return true if the event loop drains before rendering (default),
+     *         false for the legacy per-keystroke loop
+     */
+    public boolean coalesceInput() {
+        return coalesceInput;
+    }
+
+    /**
      * Process one input event from the terminal.
      *
      * @return true if input was processed, false if none available
@@ -228,64 +262,128 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
         synchronized (screenLock) {
             var ks = injected != null ? injected : getInput();
             if (ks == null) return false; // no input available
-            if (ks.type() == KeyType.CHARACTER && ks.ctrl() && (ks.character() == 'C' || ks.character() == 'c')) {
-                // Ctrl+C: forward to the active window for BBS-level handling
-                // (detach/logout), rather than killing the event loop. The window
-                // hierarchy (MenuWindow, ContentScreen) decides what to do.
-            }
-            if (ks.type() == KeyType.CHARACTER && ks.ctrl() && ks.character() == 'L') {
-                // Ctrl-L: the classic "redraw the screen" keystroke. Thin
-                // clients (e.g. the iOS app after a foreground restore) send
-                // it to ask for a full frame — the delta engine's partial
-                // refresh can't repaint a client whose canvas was wiped
-                // externally. The next updateScreen() emits a COMPLETE
-                // refresh; the keystroke then falls through to the window
-                // dispatch below so screens keep their own 'L' handling.
-                forceComplete = true;
-                needsRefresh = true;
-            }
-            if (ks.type() == KeyType.ESCAPE) {
-                // Don't quit on Escape in BBS mode — let screens handle it
-            }
-            var modal = modalWindow();
-            if (modal != null && activeWindow != null && !modal.equals(activeWindow)) {
-                // A modal window exists but isn't active — dispatch the key to
-                // it instead of discarding it. The old behavior returned true
-                // and DROPPED the keystroke entirely (e.g. a Ctrl-T arriving
-                // while a stale modal reference lingered was silently eaten).
-                activeWindow = modal;
-            }
-            if (activeWindow != null && windowsToRemove.contains(activeWindow)) {
-                // The active window is pending removal (e.g. the chat popup
-                // just closed via ESC): dispatching to it would feed a dead
-                // window. Re-point to the topmost live window instead.
-                var live = findTopmostNonBackground(new ArrayList<>(windows));
-                activeWindow = live != null ? live : activeWindow;
-            }
-            if (activeWindow != null && activeWindow.getHints().contains(WindowHint.BACKGROUND)) {
-                activeWindow = findTopmostNonBackground(new ArrayList<>(windows));
-            }
-            var focused = activeWindow != null ? activeWindow.getFocusedComponent() : null;
-            var windowBefore = activeWindow;
-            boolean consumed = false;
-            if (focused != null) {
-                consumed = focused.handleKeyStroke(ks);
-            }
-            // Only forward to the window if the focused component didn't consume it
-            // AND the active window didn't change (e.g. ESC closing a sub-screen)
-            if (!consumed && activeWindow != null && activeWindow == windowBefore) {
-                consumed = activeWindow.handleKeyStroke(ks);
-            }
-            // Tab advances focus only if neither the focused component nor the
-            // window consumed it. This lets screens intercept Tab for custom
-            // focus management (e.g. DatabaseQueryScreen toggles between query
-            // field and results grid). Shift+Tab reverses focus direction.
-            if (!consumed && ks.type() == KeyType.TAB && activeWindow != null) {
-                advanceFocus(!ks.shift());
-            }
+            dispatch(ks);
             needsRefresh = true;
             return true;
         }
+    }
+
+    /**
+     * Drain up to {@code maxKeys} pending keystrokes, dispatching each
+     * through the same path {@link #processInput()} uses, without rendering.
+     * Does not block: with no pending input returns 0 immediately. An I/O
+     * fault from the input source stops the drain (the keys dispatched so
+     * far still count) and is logged — it is not rethrown.
+     *
+     * @param maxKeys maximum number of keystrokes to drain (0 or negative
+     *                means drain nothing)
+     *
+     * @return the number of keystrokes drained (0 when no input is pending)
+     */
+    public int drainPendingInput(int maxKeys) {
+        synchronized (screenLock) {
+            int drained = 0;
+            try {
+                while (drained < maxKeys) {
+                    var ks = getInput();
+                    if (ks == null) break; // no pending input
+                    dispatch(ks);
+                    drained++;
+                }
+            } catch (IOException e) {
+                // Fault from the input source mid-drain: stop draining.
+                // Keys already dispatched count; the caller still renders.
+                java.util.logging.Logger.getLogger(DefaultTextGUI.class.getName())
+                        .log(java.util.logging.Level.WARNING,
+                                "[GUI-DRAIN] stopped draining after I/O fault", e);
+            }
+            if (drained > 0) needsRefresh = true;
+            return drained;
+        }
+    }
+
+    /**
+     * Drain up to {@code maxKeys} pending keystrokes and then render once,
+     * if anything was drained or a refresh was already requested (frame
+     * coalescing: N pending keys produce ONE render, not N).
+     *
+     * @param maxKeys maximum number of keystrokes to drain per frame
+     *
+     * @throws IOException if an I/O error or other failure occurs
+     */
+    public void drainAndRender(int maxKeys) throws IOException {
+        boolean drained = drainPendingInput(maxKeys) > 0;
+        if (drained || needsRefresh) {
+            updateScreen();
+        }
+    }
+
+    /**
+     * Dispatch one keystroke to the active window: applies the GUI-level
+     * keystroke protocol (Ctrl-L forces a complete frame; modal/liveness
+     * re-pointing of the active window) then forwards to the focused
+     * component, the window, and any custom Tab handling. Shared by
+     * {@link #processInput(KeyStroke)} and {@link #drainPendingInput(int)}.
+     *
+     * @param ks the keystroke to dispatch
+     */
+    private void dispatch(KeyStroke ks) {
+        if (ks.type() == KeyType.CHARACTER && ks.ctrl() && (ks.character() == 'C' || ks.character() == 'c')) {
+            // Ctrl+C: forward to the active window for BBS-level handling
+            // (detach/logout), rather than killing the event loop. The window
+            // hierarchy (MenuWindow, ContentScreen) decides what to do.
+        }
+        if (ks.type() == KeyType.CHARACTER && ks.ctrl() && ks.character() == 'L') {
+            // Ctrl-L: the classic "redraw the screen" keystroke. Thin
+            // clients (e.g. the iOS app after a foreground restore) send
+            // it to ask for a full frame — the delta engine's partial
+            // refresh can't repaint a client whose canvas was wiped
+            // externally. The next updateScreen() emits a COMPLETE
+            // refresh; the keystroke then falls through to the window
+            // dispatch below so screens keep their own 'L' handling.
+            forceComplete = true;
+            needsRefresh = true;
+        }
+        if (ks.type() == KeyType.ESCAPE) {
+            // Don't quit on Escape in BBS mode — let screens handle it
+        }
+        var modal = modalWindow();
+        if (modal != null && activeWindow != null && !modal.equals(activeWindow)) {
+            // A modal window exists but isn't active — dispatch the key to
+            // it instead of discarding it. The old behavior returned true
+            // and DROPPED the keystroke entirely (e.g. a Ctrl-T arriving
+            // while a stale modal reference lingered was silently eaten).
+            activeWindow = modal;
+        }
+        if (activeWindow != null && windowsToRemove.contains(activeWindow)) {
+            // The active window is pending removal (e.g. the chat popup
+            // just closed via ESC): dispatching to it would feed a dead
+            // window. Re-point to the topmost live window instead.
+            var live = findTopmostNonBackground(new ArrayList<>(windows));
+            activeWindow = live != null ? live : activeWindow;
+        }
+        if (activeWindow != null && activeWindow.getHints().contains(WindowHint.BACKGROUND)) {
+            activeWindow = findTopmostNonBackground(new ArrayList<>(windows));
+        }
+        var focused = activeWindow != null ? activeWindow.getFocusedComponent() : null;
+        var windowBefore = activeWindow;
+        boolean consumed = false;
+        if (focused != null) {
+            consumed = focused.handleKeyStroke(ks);
+        }
+        // Only forward to the window if the focused component didn't consume it
+        // AND the active window didn't change (e.g. ESC closing a sub-screen)
+        if (!consumed && activeWindow != null && activeWindow == windowBefore) {
+            consumed = activeWindow.handleKeyStroke(ks);
+        }
+        // Tab advances focus only if neither the focused component nor the
+        // window consumed it. This lets screens intercept Tab for custom
+        // focus management (e.g. DatabaseQueryScreen toggles between query
+        // field and results grid). Shift+Tab reverses focus direction.
+        if (!consumed && ks.type() == KeyType.TAB && activeWindow != null) {
+            advanceFocus(!ks.shift());
+        }
+        needsRefresh = true;
     }
 
     private KeyStroke getInput() throws IOException {
@@ -369,9 +467,24 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
         while (running) {
             boolean hadInput = false;
             try {
-                hadInput = processInput();
-                checkAutoRefresh();
-                updateScreen();
+                if (coalesceInput) {
+                    // Frame coalescing: drain a batch of pending keystrokes
+                    // (up to 32 per iteration) through the same dispatch path
+                    // processInput() uses, then render AT MOST ONCE per
+                    // iteration — N pending keys → ONE render, with the last
+                    // dispatched key's state winning. checkAutoRefresh() is
+                    // kept so windows with auto-refresh timers still repaint
+                    // while idle.
+                    hadInput = drainPendingInput(COALESCE_MAX_KEYS) > 0;
+                    checkAutoRefresh();
+                    drainAndRender(0);
+                } else {
+                    // Legacy path, byte-for-byte the pre-coalescing loop:
+                    // one keystroke per iteration, then a render.
+                    hadInput = processInput();
+                    checkAutoRefresh();
+                    updateScreen();
+                }
             } catch (RuntimeException | IOException e) {
                 // A fault in a key handler or a paint must never kill the loop:
                 // the loop dying tears the session down (clients see a blank

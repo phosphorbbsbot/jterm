@@ -84,14 +84,12 @@ class DefaultScreenSyncBracketPolicyTest {
     }
 
     @Test
-    @DisplayName("small DELTA still brackets (no regression of the core win)")
+    @DisplayName("small (mid-band) DELTA still brackets (no regression of the core win)")
     void smallDeltaBracketed() throws Exception {
-        var term = new MockTerminal(new TerminalSize(20, 10));
+        var term = new MockTerminal(new TerminalSize(80, 24)); // area 1920; tiny floor 16, cap 480
         var screen = baseScreen(term);
-        // 3 cells = well under the 25% cap of 200
-        screen.setCell(1, 1, new TextCell('X'));
-        screen.setCell(2, 2, new TextCell('Y'));
-        screen.setCell(3, 3, new TextCell('Z'));
+        // 24 cells = above the tiny-echo floor, well under the 480 cap
+        for (int c = 0; c < 24; c++) screen.setCell(c, 1, new TextCell('X'));
 
         screen.refresh(RefreshType.DELTA);
 

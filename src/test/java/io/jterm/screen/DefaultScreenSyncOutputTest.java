@@ -103,14 +103,18 @@ class DefaultScreenSyncOutputTest {
 
     @Test
     void deltaRefreshWithChangesIsBracketed() throws Exception {
-        var term = new MockTerminal(new TerminalSize(10, 5));
+        var term = new MockTerminal(new TerminalSize(80, 24)); // area 1920; tiny floor = 16 cells
         var screen = new DefaultScreen(term);
         screen.startScreen();
         term.setSyncOutputSupported(true);
         screen.refresh(RefreshType.COMPLETE);
         term.clearOutput();
 
-        screen.setCell(3, 2, new TextCell('X'));
+        // 20-cell delta: above the tiny-echo floor (16), below the cap (480)
+        // — the bracketed band under test. (A 1-cell delta paints unbracketed
+        // since the tiny-echo law: bracketing a keystroke echo parks the
+        // browser if its ESU slips a read boundary.)
+        for (int c = 0; c < 20; c++) screen.setCell(c, 2, new TextCell('X'));
         screen.refresh(RefreshType.DELTA);
 
         String out = term.getOutput();
@@ -123,20 +127,20 @@ class DefaultScreenSyncOutputTest {
 
     @Test
     void automaticRefreshBracketsSmallFramesButNotLarge() throws Exception {
-        var term = new MockTerminal(new TerminalSize(10, 5));
+        var term = new MockTerminal(new TerminalSize(80, 24)); // area 1920; tiny floor 16, cap 480
         var screen = new DefaultScreen(term);
         screen.startScreen();
         term.setSyncOutputSupported(true);
         screen.refresh(RefreshType.COMPLETE);
         term.clearOutput();
 
-        // Small diff (1 of 50 cells) → delta path, still bracketed.
-        screen.setCell(4, 1, new TextCell('a'));
+        // Mid-size diff (30 of 1920 cells): above tiny floor, below cap → bracketed
+        for (int c = 0; c < 30; c++) screen.setCell(c, 1, new TextCell('a'));
         screen.refresh(RefreshType.AUTOMATIC);
         String small = term.getOutput();
         assertTrue(small.contains("a"), repr(small));
-        assertTrue(small.startsWith(BSU), "small automatic frame must open with BSU: " + repr(small));
-        assertTrue(small.endsWith(ESU), "small automatic frame must close with ESU: " + repr(small));
+        assertTrue(small.startsWith(BSU), "mid-size automatic frame must open with BSU: " + repr(small));
+        assertTrue(small.endsWith(ESU), "mid-size automatic frame must close with ESU: " + repr(small));
         assertEquals(1, count(small, BSU), repr(small));
         assertEquals(1, count(small, ESU), repr(small));
 
@@ -144,9 +148,12 @@ class DefaultScreenSyncOutputTest {
         // Large diff (all 50 cells > half-area threshold → complete path):
         // per the card-6 bracket policy, large/complete frames paint
         // UNBRACKETED so slow clients render progressively instead of holding
-        // the screen for the whole frame transfer.
-        for (int r = 0; r < 5; r++) {
-            for (int c = 0; c < 10; c++) {
+        // the screen for the whole frame transfer. (Screen here is 80x24: the
+        // 50 '#' cells cover > half the old 10x5 grid — but on 80x24 they'd
+        // be a mid-size DELTA → still bracketed. So paint the FULL screen to
+        // force the large/complete fallback.)
+        for (int r = 0; r < 24; r++) {
+            for (int c = 0; c < 80; c++) {
                 screen.setCell(c, r, new TextCell('#'));
             }
         }
@@ -189,16 +196,16 @@ class DefaultScreenSyncOutputTest {
 
     @Test
     void failureMidFrameStillEmitsEndBracket() throws Exception {
-        var term = new ProbeTerminal(new TerminalSize(10, 5));
+        var term = new ProbeTerminal(new TerminalSize(80, 24)); // tiny floor 16, cap 480
         var screen = new DefaultScreen(term);
         assertFalse(screen.syncBracketActive(), "no bracket before any refresh");
         screen.startScreen();
         term.setSyncOutputSupported(true);
         term.bracketProbe = screen::syncBracketActive;
 
-        // Bracket policy (card 6) brackets SMALL deltas only — drive the
-        // mid-frame flush failure through a small delta (1 of 50 cells, well
-        // under the quarter-area cap), which is bracketed and always flushes.
+        // Bracket policy brackets MID-SIZE deltas only (tiny ≤16 cells paint
+        // unbracketed; >cap paints unbracketed). Drive the mid-frame flush
+        // failure through a 24-cell delta — bracketed band.
         // Base COMPLETE first (unbracketed), then arm the failure.
         screen.refresh(RefreshType.COMPLETE);
         term.clearOutput();
@@ -207,7 +214,7 @@ class DefaultScreenSyncOutputTest {
         // below is under test.
         term.bracketActiveAtFirstFrameByte = null;
         term.failFlush = true;
-        screen.setCell(2, 1, new TextCell('F'));
+        for (int c = 0; c < 24; c++) screen.setCell(c, 1, new TextCell('F'));
 
         var ex = assertThrows(IOException.class, () -> screen.refresh(RefreshType.DELTA));
         assertEquals("synthetic flush failure", ex.getMessage());

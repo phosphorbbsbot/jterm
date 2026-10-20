@@ -319,6 +319,23 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     }
 
     /**
+     * Subclass interception hook, consulted ONCE per keystroke at the very
+     * top of dispatch — before any window/focus routing. Returning true
+     * consumes the keystroke (it never reaches windows). This guarantees
+     * BBS-wide intercepts (Ctrl-T chat, Ctrl-C detach semantics) run on
+     * EVERY path: processInput() AND the coalescing drain loop — the drain
+     * path previously bypassed the ActivityTrackingTextGUI.processInput
+     * override and Ctrl-T died while anything was batched (2026-10-20).
+     *
+     * @param ks the keystroke about to be dispatched
+     *
+     * @return true to consume the keystroke
+     */
+    protected boolean guiIntercept(KeyStroke ks) {
+        return false;
+    }
+
+    /**
      * Dispatch one keystroke to the active window: applies the GUI-level
      * keystroke protocol (Ctrl-L forces a complete frame; modal/liveness
      * re-pointing of the active window) then forwards to the focused
@@ -328,6 +345,11 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
      * @param ks the keystroke to dispatch
      */
     private void dispatch(KeyStroke ks) {
+        if (guiIntercept(ks)) {
+            // Consumed by a subclass-level intercept (Ctrl-T chat overlay etc.)
+            needsRefresh = true;
+            return;
+        }
         if (ks.type() == KeyType.CHARACTER && ks.ctrl() && (ks.character() == 'C' || ks.character() == 'c')) {
             // Ctrl+C: forward to the active window for BBS-level handling
             // (detach/logout), rather than killing the event loop. The window

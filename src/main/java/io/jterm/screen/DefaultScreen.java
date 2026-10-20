@@ -217,8 +217,16 @@ public class DefaultScreen implements Screen {
         } else {
             int deltaCost = (type == RefreshType.DELTA) ? deltas.size()
                     : (deltas.size() > (frontBuffer.size().area() / 2) ? frontBuffer.size().area() : deltas.size());
+            // Latency-sensitive echoes (chat input, login typing, single-cell
+            // highlight moves) paint UNBRACKETED: an ESU that slips into the
+            // next proxy read parks the browser's renderer until it arrives —
+            // the user sees typed text one character late (2026-10-20). A
+            // TINY delta cannot tear: skip the bracket, accept immediate
+            // progressive paint. Larger deltas below the cap keep the bracket.
+            int TINY_DELTA_CELLS = 16;
             bracket = terminal.syncOutputSupported()
-                    && deltaCost <= (frontBuffer.size().area() / 4);
+                    && deltaCost <= (frontBuffer.size().area() / 4)
+                    && deltaCost > TINY_DELTA_CELLS;
         }
         if (bracket) {
             syncBracketActive = true;

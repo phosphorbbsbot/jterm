@@ -425,6 +425,20 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
      *
      * @throws IOException if an I/O error or other failure occurs
      */
+    /**
+     * Blink-visibility law (2026-10-20): transient highlight renders (menu
+     * selection blink) must paint UNBRACKETED even on 2026-capable clients —
+     * a short bracketed blink followed within milliseconds by larger frames
+     * gets coalesced away by clients that honor synchronized updates
+     * (Terminal.app). Delegates to the DefaultScreen suppression window; a
+     * no-op on screens that do not implement bracket suppression.
+     */
+    public void setSyncBracketSuppressed(boolean suppressed) {
+        if (screen instanceof io.jterm.screen.DefaultScreen ds) {
+            ds.setSyncBracketSuppressed(suppressed);
+        }
+    }
+
     @Override
     public void waitForInput() throws IOException {
         if (screen instanceof io.jterm.screen.DefaultScreen ds) {

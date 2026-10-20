@@ -30,6 +30,20 @@ public class DefaultScreen implements Screen {
     private volatile boolean syncBracketActive = false;
 
     /**
+     * Blink-visibility law (2026-10-20): when true, refreshes paint
+     * UNBRACKETED regardless of the client's declared 2026 support. Opened
+     * transiently around latency-sensitive highlight renders (menu-blink
+     * phases) so a short bracketed blink cannot be coalesced away by the
+     * client renderer when larger frames follow within milliseconds.
+     */
+    private volatile boolean syncBracketSuppressed = false;
+
+    /** Opens/closes the bracket-suppression window (see field Javadoc). */
+    public void setSyncBracketSuppressed(boolean suppressed) {
+        this.syncBracketSuppressed = suppressed;
+    }
+
+    /**
      * Return the terminal.
      *
      * @return the terminal
@@ -205,12 +219,14 @@ public class DefaultScreen implements Screen {
             frontBuffer.copyFrom(backBuffer);
             return;
         }
-        // Bracket-EMISSION policy (card 6): synchronized output is a
-        // no-tears guarantee for SHORT incremental updates only. Holding the
-        // client's renderer across a COMPLETE (or near-complete) frame freezes
-        // slow links for the entire frame transfer (web terminal, 2026-10-19),
-        // so large frames paint progressively, exactly as mode-2026-off.
-        // Complete-path cost is ~area cells; delta cost is deltas.size().
+        // Blink-visibility law (2026-10-20): latency-sensitive transient
+        // deltas (menu-blink highlight phases) paint UNBRACKETED even when
+        // the connected client declares 2026 support — Terminal.app holds
+        // bracketed frames and a short bracketed blink followed by a burst
+        // of larger transition frames gets coalesced away client-side.
+        // The suppression window is opened by the caller (MenuWindow blink)
+        // around exactly those two renders; every other frame brackets as
+        // the card-6 policy dictates.
         boolean bracket;
         if (type == RefreshType.COMPLETE) {
             bracket = false;
@@ -225,6 +241,7 @@ public class DefaultScreen implements Screen {
             // progressive paint. Larger deltas below the cap keep the bracket.
             int TINY_DELTA_CELLS = 16;
             bracket = terminal.syncOutputSupported()
+                    && !syncBracketSuppressed
                     && deltaCost <= (frontBuffer.size().area() / 4)
                     && deltaCost > TINY_DELTA_CELLS;
         }

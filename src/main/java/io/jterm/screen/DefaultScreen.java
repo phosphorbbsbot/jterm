@@ -259,10 +259,17 @@ public class DefaultScreen implements Screen {
             }
         } finally {
             if (bracket) {
-                // ESU goes out after the frame's flush; emit it even if the
+                // ESU goes out after the frame's cells; emit it even if the
                 // frame write failed so the 2026 bracket never dangles.
                 terminal.writeRaw(AnsiCodes.END_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8));
                 syncBracketActive = false;
+                // Flush-boundary law (2026-10-20): the frame body's internal
+                // flush happened BEFORE this ESU — without a trailing flush
+                // the closing bracket rides the NEXT refresh's flush (often
+                // seconds later). Clients honoring 2026 hold the whole frame
+                // until ESU: bracketed updates painted one refresh behind
+                // (arrow-scroll lag on web + telnet). Push the ESU now.
+                terminal.flush();
             }
         }
         frontBuffer.copyFrom(backBuffer);

@@ -51,11 +51,11 @@ class DefaultScreenSyncOutputTest {
 
         String out = term.getOutput();
         assertFalse(out.isEmpty(), "a complete refresh must emit a frame");
-        assertEquals(1, count(out, BSU), "exactly one BSU in: " + repr(out));
-        assertEquals(1, count(out, ESU), "exactly one ESU in: " + repr(out));
-        assertTrue(out.indexOf(BSU) < out.indexOf(ESU), "BSU must precede ESU");
-        assertTrue(out.startsWith(BSU), "refresh must open with BSU, got: " + repr(out));
-        assertTrue(out.endsWith(ESU), "refresh must close with ESU, got: " + repr(out));
+        // Card-6 bracket policy: COMPLETE frames paint UNBRACKETED so slow
+        // clients render progressively (a bracketed full-screen redraw held
+        // the web terminal's renderer for the entire frame transfer).
+        assertEquals(0, count(out, BSU), "COMPLETE must be unbracketed: " + repr(out));
+        assertEquals(0, count(out, ESU), "COMPLETE must be unbracketed: " + repr(out));
         assertFalse(screen.syncBracketActive(), "bracket must not stay active after refresh");
     }
 
@@ -122,7 +122,7 @@ class DefaultScreenSyncOutputTest {
     }
 
     @Test
-    void automaticRefreshBracketsLargeAndSmallFrames() throws Exception {
+    void automaticRefreshBracketsSmallFramesButNotLarge() throws Exception {
         var term = new MockTerminal(new TerminalSize(10, 5));
         var screen = new DefaultScreen(term);
         screen.startScreen();
@@ -141,7 +141,10 @@ class DefaultScreenSyncOutputTest {
         assertEquals(1, count(small, ESU), repr(small));
 
         term.clearOutput();
-        // Large diff (all 50 cells, > half-area threshold) → complete path, bracketed.
+        // Large diff (all 50 cells > half-area threshold → complete path):
+        // per the card-6 bracket policy, large/complete frames paint
+        // UNBRACKETED so slow clients render progressively instead of holding
+        // the screen for the whole frame transfer.
         for (int r = 0; r < 5; r++) {
             for (int c = 0; c < 10; c++) {
                 screen.setCell(c, r, new TextCell('#'));
@@ -150,10 +153,8 @@ class DefaultScreenSyncOutputTest {
         screen.refresh(RefreshType.AUTOMATIC);
         String large = term.getOutput();
         assertTrue(large.contains("#"), repr(large));
-        assertTrue(large.startsWith(BSU), "large automatic frame must open with BSU: " + repr(large));
-        assertTrue(large.endsWith(ESU), "large automatic frame must close with ESU: " + repr(large));
-        assertEquals(1, count(large, BSU), repr(large));
-        assertEquals(1, count(large, ESU), repr(large));
+        assertEquals(0, count(large, BSU), "large automatic frame must NOT bracket: " + repr(large));
+        assertEquals(0, count(large, ESU), "large automatic frame must NOT bracket: " + repr(large));
     }
 
     /**
@@ -194,12 +195,21 @@ class DefaultScreenSyncOutputTest {
         screen.startScreen();
         term.setSyncOutputSupported(true);
         term.bracketProbe = screen::syncBracketActive;
-        term.failFlush = true;
 
-        // COMPLETE always emits a frame and always flushes, so the synthetic
-        // flush failure lands mid-frame — AUTOMATIC with no diffs would be
-        // byte-silent by design and never reach flush().
-        var ex = assertThrows(IOException.class, () -> screen.refresh(RefreshType.COMPLETE));
+        // Bracket policy (card 6) brackets SMALL deltas only — drive the
+        // mid-frame flush failure through a small delta (1 of 50 cells, well
+        // under the quarter-area cap), which is bracketed and always flushes.
+        // Base COMPLETE first (unbracketed), then arm the failure.
+        screen.refresh(RefreshType.COMPLETE);
+        term.clearOutput();
+        // Reset the first-byte capture: the base COMPLETE frame was emitted
+        // UNBRACKETED (card-6 policy), and only the bracketed delta frame
+        // below is under test.
+        term.bracketActiveAtFirstFrameByte = null;
+        term.failFlush = true;
+        screen.setCell(2, 1, new TextCell('F'));
+
+        var ex = assertThrows(IOException.class, () -> screen.refresh(RefreshType.DELTA));
         assertEquals("synthetic flush failure", ex.getMessage());
 
         String out = term.getOutput();

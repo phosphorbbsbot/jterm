@@ -205,22 +205,32 @@ public class DefaultScreen implements Screen {
             frontBuffer.copyFrom(backBuffer);
             return;
         }
-        boolean bracket = terminal.syncOutputSupported();
+        // Bracket-EMISSION policy (card 6): synchronized output is a
+        // no-tears guarantee for SHORT incremental updates only. Holding the
+        // client's renderer across a COMPLETE (or near-complete) frame freezes
+        // slow links for the entire frame transfer (web terminal, 2026-10-19),
+        // so large frames paint progressively, exactly as mode-2026-off.
+        // Complete-path cost is ~area cells; delta cost is deltas.size().
+        boolean bracket;
+        if (type == RefreshType.COMPLETE) {
+            bracket = false;
+        } else {
+            int deltaCost = (type == RefreshType.DELTA) ? deltas.size()
+                    : (deltas.size() > (frontBuffer.size().area() / 2) ? frontBuffer.size().area() : deltas.size());
+            bracket = terminal.syncOutputSupported()
+                    && deltaCost <= (frontBuffer.size().area() / 4);
+        }
         if (bracket) {
             syncBracketActive = true;
             terminal.writeRaw(AnsiCodes.BEGIN_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8));
         }
         try {
-            if (type == RefreshType.COMPLETE) {
+            if (type == RefreshType.COMPLETE || deltas == null) {
                 doCompleteRefresh();
-            } else if (type == RefreshType.DELTA) {
-                doDeltaRefresh(deltas);
+            } else if (deltas.size() > (frontBuffer.size().area() / 2)) {
+                doCompleteRefresh();
             } else {
-                if (deltas.size() > (frontBuffer.size().area() / 2)) {
-                    doCompleteRefresh();
-                } else {
-                    doDeltaRefresh(deltas);
-                }
+                doDeltaRefresh(deltas);
             }
         } finally {
             if (bracket) {

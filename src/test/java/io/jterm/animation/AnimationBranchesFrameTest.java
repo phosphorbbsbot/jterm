@@ -215,6 +215,10 @@ class AnimationBranchesFrameTest {
         // individually reaches life 0.
         List<Fireworks.Particle> burst = new ArrayList<>(fw.getParticles());
         assertTrue(burst.size() >= 8, "explosion spawns at least 8 particles");
+        // No new rockets may launch while we drain: the launch loop would keep exploding fresh
+        // bursts inside the drift loop and the pool would never empty (flaky drain failure under
+        // load, nightly 10/21). Quiesce the show, then assert the burst drains deterministically.
+        fw.setLaunchesEnabled(false);
         for (int i = 0; i < 80 && !fw.getParticles().isEmpty(); i++) {
             fw.renderFrame(new TextGraphics(new ScreenBuffer(size)), size);
         }

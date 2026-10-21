@@ -21,7 +21,7 @@ public class RainStorm implements AnimatedBackground {
     /** Drops per 80×24 screen area — scales with terminal size. */
     private static final double DROPS_PER_AREA = 100.0 / (80 * 24);
 
-    private final Random random = new Random();
+    private Random random = new Random();
 
     private volatile boolean running;
     private volatile TerminalSize lastSize;
@@ -36,6 +36,19 @@ public class RainStorm implements AnimatedBackground {
      * @param preferredSize the preferred size
      */
     public RainStorm(TerminalSize preferredSize) {
+        this(preferredSize, new Random());
+    }
+
+    /**
+     * Test constructor: injects the RNG so frame assertions can be deterministic. Production
+     * callers keep the no-arg form (unseeded). Rain drops/lightning land on random cells, so
+     * unseeded randomness makes cell-exact assertions flaky under load (nightly 10/20 hit).
+     *
+     * @param preferredSize the preferred size
+     * @param rng           the random source to use for drop placement and lightning
+     */
+    public RainStorm(TerminalSize preferredSize, Random rng) {
+        this.random = rng;
         onResize(preferredSize);
     }
 

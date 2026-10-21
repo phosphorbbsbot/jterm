@@ -17,6 +17,20 @@ public class Fireworks implements AnimatedBackground {
 
     private static final int TARGET_FPS = 10;
     private static final int MAX_ROCKETS = 3;
+    /**
+     * Test seam: when false, no new rockets launch during renderFrame. Real fireworks shows
+     * launch continuously, but frame-assertion tests need the burst to drain to zero without
+     * new rockets exploding mid-loop and restocking the particle pool (seen as a flaky
+     * 'particles must drain' failure under load, nightly 10/21).
+     */
+    private boolean launchesEnabled = true;
+
+    /**
+     * Toggles rocket launching for test determinism (see field Javadoc).
+     *
+     * @param enabled false to stop future launches; existing rockets keep flying
+     */
+    public void setLaunchesEnabled(boolean enabled) { this.launchesEnabled = enabled; }
     private static final int MIN_PARTICLES = 8;
     private static final int MAX_PARTICLES = 15;
 
@@ -70,7 +84,7 @@ public class Fireworks implements AnimatedBackground {
         if (particles == null) particles = new ArrayList<>();
 
         // Launch new rockets if we have room.
-        if (rockets.size() < MAX_ROCKETS) {
+        if (launchesEnabled && rockets.size() < MAX_ROCKETS) {
             if (launchCooldown <= 0) {
                 rockets.add(new Rocket(size, random));
                 launchCooldown = 5 + random.nextInt(10);

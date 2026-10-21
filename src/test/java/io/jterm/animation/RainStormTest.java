@@ -52,7 +52,9 @@ class RainStormTest {
     @Test
     @DisplayName("renderFrame clears background to black")
     void clearsBackgroundToBlack() {
-        var storm = new RainStorm(new TerminalSize(80, 24));
+        // Seeded RNG: drops land on random cells, and an unseeded storm put a '/' on (10,2) in
+        // the 10/20 nightly run — cell-exact assertions need deterministic placement.
+        var storm = new RainStorm(new TerminalSize(80, 24), new java.util.Random(42));
         var size = new TerminalSize(80, 24);
         var buffer = new ScreenBuffer(size);
         buffer.setCell(10, 2, new TextCell('X', AnsiColor.BRIGHT_RED, AnsiColor.WHITE));

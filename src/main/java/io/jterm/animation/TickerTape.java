@@ -222,9 +222,11 @@ public class TickerTape implements AnimatedBackground {
 
     /** Last known data per symbol — departed quotes keep rendering until they queue-exit. */
     private final java.util.HashMap<String, TickerItem> everSeen = new java.util.HashMap<>();
+    /** Symbols backed by REAL supplier data (demo data never gets flap-keep). */
+    private final java.util.HashSet<String> realBacked = new java.util.HashSet<>();
 
     private TickerItem lastDataFor(String sym) {
-        return everSeen.get(sym);
+        return realBacked.contains(sym) ? everSeen.get(sym) : null;
     }
 
     /** Symbol cycle order, kept INCREMENTALLY: arrivals insert, nothing reshuffles. */
@@ -248,6 +250,7 @@ public class TickerTape implements AnimatedBackground {
         for (TickerItem it : fresh) {
             bySym.put(it.symbol(), it);
             everSeen.put(it.symbol(), it);
+            realBacked.add(it.symbol());
         }
         java.util.Random rnd = shuffleSeed >= 0 ? new java.util.Random(shuffleSeed) : orderRandom;
         if (!orderInitialized) {

@@ -34,12 +34,14 @@ public class AnimationTimer {
                 long start = System.nanoTime();
                 // FAULT-ISOLATION LAW (2026-10-26): a single throwing callback
                 // used to kill this thread silently — the tape froze mid-scroll
-                // while everything looked "running". Log and keep animating.
+                // while everything looked "running". Swallow (no logging HERE:
+                // a synchronous log write on the animation path produced a
+                // multi-second I/O stall every ~5s on the live server); frames
+                // are cheap and idempotent — the next frame repaints.
                 try {
                     frameCallback.run();
-                } catch (RuntimeException e) {
-                    java.util.logging.Logger.getLogger(AnimationTimer.class.getName())
-                            .log(java.util.logging.Level.WARNING, "animation frame fault", e);
+                } catch (RuntimeException ignored) {
+                    // keep animating; see law comment
                 }
                 long elapsed = System.nanoTime() - start;
                 long sleep = frameNanos - elapsed;

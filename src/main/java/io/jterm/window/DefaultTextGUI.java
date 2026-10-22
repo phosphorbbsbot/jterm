@@ -461,7 +461,18 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
             // covered by any window get the theme background instead of black.
             var theme = ThemeManager.active();
             var fillCell = new io.jterm.style.TextCell(' ', theme.foreground(), theme.background());
-            var buf = new io.jterm.screen.ScreenBuffer(screen.getTerminalSize(), fillCell);
+            // Reuse the render buffer across frames (GC law, 2026-10-26):
+            // allocating a fresh 4400-cell buffer 8x/sec produced steady
+            // young-gen GC churn that surfaced as multi-second scroll pauses
+            // every ~5s. The buffer is cleared to the theme fill each frame.
+            var buf = renderBuffer;
+            var size = screen.getTerminalSize();
+            if (buf == null || !buf.size().equals(size)) {
+                buf = new io.jterm.screen.ScreenBuffer(size, fillCell);
+                renderBuffer = buf;
+            } else {
+                buf.fill(fillCell);
+            }
             var g = new io.jterm.graphics.TextGraphics(buf);
             for (var window : sortedWindows()) {
                 if (windowsToRemove.contains(window)) continue;
@@ -492,6 +503,7 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     }
 
     private io.jterm.screen.ScreenBuffer gBuffer;
+    private io.jterm.screen.ScreenBuffer renderBuffer;
 
     /**
      * Run the main event loop until stopped.

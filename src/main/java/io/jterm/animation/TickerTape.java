@@ -113,6 +113,19 @@ public class TickerTape implements AnimatedBackground {
     private volatile TerminalSize lastSize;
     private volatile int scrollOffset;          // window phase within the CURRENT cycle (tests)
     private volatile long absoluteOffsetCells;  // Joe's queue law: cells consumed since open — never % totalWidth
+    /**
+     * Guards (absoluteOffsetCells, orderedItems/scrollOffset) pairs: the
+     * animation clock rotates the queue [offset -= frontWidth, items rotate]
+     * while the paint thread reads [offset, items] every frame at 8fps. Those
+     * two steps are NOT atomic separately — a paint between them saw the NEW
+     * front with the OLD (huge) offset, clamped startChar to the item's full
+     * length and painted the new symbol as ZERO cells + separator = the bar
+     * visibly swallowed the arriving symbol for 1-2 frames at every
+     * rotation beat (~5s at 4 cells/s per ~22-cell item) — exactly Joe's
+     * "pause every 5 seconds, then the next symbol starts" (2026-10-26).
+     * Both rotation and render snapshot under this lock; no I/O inside.
+     */
+    private final Object stateLock = new Object();
     private volatile List<TickerItem> lastCycleItems = List.of(); // the cycle whose widths anchor absoluteOffset
     private volatile List<TickerItem> items;
     private volatile long lastRefreshMs;
@@ -176,9 +189,19 @@ public class TickerTape implements AnimatedBackground {
         // anchors the window to the FRONT item — universe changes (arrivals,
         // flaps, removals) never shift visible content; when an item scrolls
         // off the left, tick() rotates it to the back.
-        int cellsIntoFront = (int) Math.min(absoluteOffsetCells, Integer.MAX_VALUE);
+        // ATOMIC SNAPSHOT (see stateLock): offset and queue must come from
+        // the same rotation state, else the front item races its offset.
+        long offsetCells;
+        List<TickerItem> ordered;
+        synchronized (stateLock) {
+            offsetCells = absoluteOffsetCells;
+            ordered = (orderedItems.isEmpty() && items != null && !items.isEmpty()) ? items : orderedItems;
+        }
+        if (ordered == null || ordered.isEmpty()) {
+            return;
+        }
+        int cellsIntoFront = (int) Math.min(offsetCells, Integer.MAX_VALUE);
         int col = 0;
-        List<TickerItem> ordered = orderedItems.isEmpty() ? items : orderedItems;
         int idx = 0;
         while (col < paintCols) {
             if (idx >= ordered.size()) {
@@ -300,13 +323,15 @@ public class TickerTape implements AnimatedBackground {
             orderSymbols.removeIf(sym -> !bySym.containsKey(sym));
         }
         List<TickerItem> ordered = new java.util.ArrayList<>();
-        for (String sym : orderSymbols) {
-            TickerItem it = bySym.get(sym);
-            if (it != null) {
-                ordered.add(it);
+        synchronized (stateLock) {
+            for (String sym : orderSymbols) {
+                TickerItem it = bySym.get(sym);
+                if (it != null) {
+                    ordered.add(it);
+                }
             }
+            orderedItems = List.copyOf(ordered);
         }
-        orderedItems = List.copyOf(ordered);
         java.util.TreeSet<String> syms = new java.util.TreeSet<>(orderSymbols);
         lastOrderSignature = syms.hashCode();
         // supplier-present = genuinely in the latest supplier list — NOT the
@@ -390,16 +415,18 @@ public class TickerTape implements AnimatedBackground {
         // last cell plus separator has passed the left edge, it re-enters at
         // the BACK and the window stays anchored — a universe that grows or
         // flaps never shifts the visible content.
-        while (absoluteOffsetCells >= frontWidth) {
-            rotateFrontToBack();
-            absoluteOffsetCells -= frontWidth;
-            frontWidth = frontItemWidth();
-            if (frontWidth <= 0) {
-                break;
+        synchronized (stateLock) {
+            while (absoluteOffsetCells >= frontWidth) {
+                rotateFrontToBack();
+                absoluteOffsetCells -= frontWidth;
+                frontWidth = frontItemWidth();
+                if (frontWidth <= 0) {
+                    break;
+                }
             }
+            scrollOffset = (int) (absoluteOffsetCells % Math.max(1, frontItemWidth() + 1));
+            scrollOffset = (int) Math.min(scrollOffset, frontWidth);
         }
-        scrollOffset = (int) (absoluteOffsetCells % Math.max(1, frontItemWidth() + 1));
-        scrollOffset = (int) Math.min(scrollOffset, frontWidth);
     }
 
     /** Cell width of the item currently at the queue front (+ separator). */

@@ -22,8 +22,23 @@ import java.util.function.Supplier;
 public class TickerTape implements AnimatedBackground {
 
     private static final int TARGET_FPS = 8;
-    private static final int SCROLL_SPEED_CELLS = 1;
-    private static final String SEPARATOR = "  |  ";
+    private static final double DEFAULT_SCROLL_SPEED_CELLS = 1.0;
+
+    /**
+     * Cells advanced per frame; fractional values slow the scroll below one
+     * cell per frame by advancing only on frames where the accumulated
+     * fraction crosses a cell boundary.
+     */
+    private double scrollSpeed = DEFAULT_SCROLL_SPEED_CELLS;
+    private double scrollCarry;
+
+    /** @param cellsPerFrame cells to advance per frame (e.g. 0.5 = half speed) */
+    public void setScrollSpeed(double cellsPerFrame) {
+        if (cellsPerFrame <= 0) {
+            throw new IllegalArgumentException("scrollSpeed must be > 0, got " + cellsPerFrame);
+        }
+        this.scrollSpeed = cellsPerFrame;
+    }    private static final String SEPARATOR = "  |  ";
     private static final long REFRESH_INTERVAL_MS = 60_000;
 
     // Built-in decorative data scrolled when no supplier provides items.
@@ -39,6 +54,18 @@ public class TickerTape implements AnimatedBackground {
     );
 
     private final Supplier<List<TickerItem>> dataSupplier;
+
+    /**
+     * When true (default), an empty/erroring data supplier renders the built-in
+     * demo items instead of a blank bar. Standalone/library demos look alive;
+     * production hosts should paint NOTHING when their feed has no data.
+     */
+    private boolean demoFallback = true;
+
+    /** @param demo false to paint a blank bar instead of demo items when the supplier has no data */
+    public void setDemoFallback(boolean demo) {
+        this.demoFallback = demo;
+    }
 
     private volatile boolean running;
     private volatile TerminalSize lastSize;
@@ -115,10 +142,21 @@ public class TickerTape implements AnimatedBackground {
             return;
         }
 
-        scrollOffset = (scrollOffset + SCROLL_SPEED_CELLS) % totalWidth;
+        // Fractional accumulate-advance: carry sub-cell remainders so the
+        // effective speed is exactly scrollSpeed cells/frame over time.
+        scrollCarry += scrollSpeed;
+        int advance = (int) Math.floor(scrollCarry);
+        scrollCarry -= advance;
+        scrollOffset = (scrollOffset + advance) % totalWidth;
+
+        // REAL TERMINAL LAW: writing a character into the last column of the
+        // bottom row makes real terminals auto-wrap to the next line. The
+        // tape lives on the bottom row, so it must never paint column
+        // cols-1 — stop one column short.
+        int paintCols = Math.max(0, cols - 1);
 
         int startIdx = scrollOffset;
-        for (int col = 0; col < cols; col++) {
+        for (int col = 0; col < paintCols; col++) {
             int idx = (startIdx + col) % totalWidth;
             char ch = padded.charAt(idx);
             int effectiveCol = col;
@@ -228,10 +266,10 @@ public class TickerTape implements AnimatedBackground {
         try {
             this.items = dataSupplier.get();
         } catch (Exception e) {
-            this.items = FALLBACK_ITEMS;
+            this.items = null;
         }
         if (this.items == null || this.items.isEmpty()) {
-            this.items = FALLBACK_ITEMS;
+            this.items = demoFallback ? FALLBACK_ITEMS : null;
         }
         lastRefreshMs = System.currentTimeMillis();
     }

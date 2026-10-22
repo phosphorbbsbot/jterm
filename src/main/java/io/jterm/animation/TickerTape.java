@@ -48,11 +48,20 @@ public class TickerTape implements AnimatedBackground {
     /** @param seed non-negative long to pin the shuffle (deterministic order); -1 = random */
     public void setShuffleSeed(long seed) {
         this.shuffleSeed = seed;
-        // force re-derivation with the new seed (the sticky-signature check
-        // would otherwise keep the identity-seeded order)
-        orderInitialized = false;
-        lastOrderSignature = -1;
-        regenerateOrder(items);
+        // force re-derivation with the new seed, bypassing the sticky-subset
+        // check: the ordered list must come from THIS seed alone
+        if (items != null && !items.isEmpty()) {
+            List<TickerItem> copy = new java.util.ArrayList<>(items);
+            java.util.Random rnd = seed >= 0 ? new java.util.Random(seed) : orderRandom;
+            java.util.Collections.shuffle(copy, rnd);
+            orderedItems = List.copyOf(copy);
+            java.util.TreeSet<String> syms = new java.util.TreeSet<>();
+            for (TickerItem it : orderedItems) {
+                syms.add(it.symbol());
+            }
+            lastOrderSignature = syms.hashCode();
+            orderInitialized = true;
+        }
     }
 
     /** @param cellsPerFrame cells to advance per frame (e.g. 0.5 = half speed) */
@@ -210,11 +219,20 @@ public class TickerTape implements AnimatedBackground {
             lastOrderSignature = -1;
             return;
         }
-        List<String> symbols = new java.util.ArrayList<>();
+        // signature is ORDER-INSENSITIVE over the symbol set: a partial
+        // refresh (quotes still streaming in) must not reshuffle the tape —
+        // only a genuinely NEW symbol set does.
+        java.util.TreeSet<String> symbols = new java.util.TreeSet<>();
         for (TickerItem it : fresh) {
             symbols.add(it.symbol());
         }
-        java.util.Collections.sort(symbols);
+        java.util.TreeSet<String> known = new java.util.TreeSet<>();
+        for (TickerItem it : orderedItems) {
+            known.add(it.symbol());
+        }
+        if (known.containsAll(symbols) && known.size() >= symbols.size()) {
+            return; // subset/same of the known order — keep it sticky
+        }
         int signature = symbols.hashCode();
         List<TickerItem> copy = new java.util.ArrayList<>(fresh);
         if (orderInitialized && signature == lastOrderSignature && orderedItems.size() == copy.size()) {

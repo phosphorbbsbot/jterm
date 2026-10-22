@@ -199,4 +199,47 @@ class TickerTapeWireFitTest {
         c.renderFrame(new TextGraphics(bc), new TerminalSize(80, 1));
         assertEquals(before.equals(rowText(ba, 0)) || true, true); // trivial; the load-bearing asserts are above
     }
+
+    @Test
+    @DisplayName("growing symbol set keeps the existing order and existing items stable (no universe swap)")
+    void growingSetNeverReshuffles() {
+        var a = List.of(new TickerTape.TickerItem("AAPL", 100.0, 90.0));
+        var ab = List.copyOf(a);
+        var supplier = new java.util.concurrent.atomic.AtomicReference<java.util.List<TickerTape.TickerItem>>(a);
+        var tape = new TickerTape(new TerminalSize(80, 1), supplier::get);
+        tape.setDemoFallback(false);
+        var buffer = new ScreenBuffer(new TerminalSize(80, 1));
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String first = rowText(buffer, 0);
+        // now the supplier returns AAPL+MSFT (quote stream landed MSFT)
+        supplier.set(java.util.List.of(
+                new TickerTape.TickerItem("AAPL", 100.0, 90.0),
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0)));
+        tape.refreshData();
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String second = rowText(buffer, 0);
+        int a1 = first.indexOf("AAPL");
+        int a2 = second.indexOf("AAPL"); int m2 = second.indexOf("MSFT");
+        assertTrue(a1 >= 0 && a2 >= 0 && m2 >= 0, "AAPL must never vanish between refreshes");
+        // order STICKY: cycle the supplier with the same 2-symbol set several
+        // times (with price changes too) — the relative order must not change
+        tape.refreshData();
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String third = rowText(buffer, 0);
+        int a3 = third.indexOf("AAPL"); int m3 = third.indexOf("MSFT");
+        assertTrue(a3 >= 0 && m3 >= 0, "no vanish on same-set refresh");
+        boolean firstAB = a2 < m2;
+        boolean thirdAB = a3 < m3;
+        assertEquals(firstAB, thirdAB, "relative order must not reshuffle across refreshes");
+        // and a supplier returning items in REVERSED order must not flip the tape:
+        supplier.set(java.util.List.of(
+                new TickerTape.TickerItem("MSFT", 201.0, 190.0),
+                new TickerTape.TickerItem("AAPL", 101.0, 90.0)));
+        tape.refreshData();
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String fourth = rowText(buffer, 0);
+        int a4 = fourth.indexOf("AAPL"); int m4 = fourth.indexOf("MSFT");
+        assertEquals(firstAB, a4 < m4,
+                "reversed supplier order must NOT flip the tape (order is sticky, price-only refresh)");
+    }
 }

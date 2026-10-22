@@ -479,15 +479,29 @@ public class TickerTape implements AnimatedBackground {
 
     /** Visible for tests: force a data reload. */
     public void refreshData() {
+        List<TickerItem> real;
+        boolean supplierFailed = false;
         try {
-            this.items = dataSupplier.get();
+            real = dataSupplier.get();
         } catch (Exception e) {
-            this.items = null;
+            real = null;
+            supplierFailed = true;
         }
-        if (this.items == null || this.items.isEmpty()) {
-            this.items = demoFallback ? FALLBACK_ITEMS : null;
+        if (real == null || real.isEmpty()) {
+            // NO real data: paint demo (library default) or a blank bar — and
+            // CRITICALLY, do NOT let demo/blank data poison the queue: the
+            // queue resets so real data enters cleanly when it arrives.
+            this.items = (demoFallback && !supplierFailed) ? FALLBACK_ITEMS : null;
+            if (this.items == null || !demoFallback) {
+                regenerateOrder(null);
+            } else {
+                regenerateOrder(this.items); // pure demo mode (library use)
+            }
+            lastRefreshMs = System.currentTimeMillis();
+            return;
         }
-        regenerateOrder(this.items);
+        this.items = real;
+        regenerateOrder(real);
         lastRefreshMs = System.currentTimeMillis();
     }
 

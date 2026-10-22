@@ -546,8 +546,16 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
             // The 1ms timeout ensures needsRefresh is checked promptly even
             // when no input is available.
             if (!hadInput) {
-                // Yield to other threads (e.g. background CompletableFuture workers)
-                Thread.yield();
+                // PAUSE LAW (Joe 2026-10-26 "pauses and jumps"): the legacy
+                // Thread.yield() busy-spin pinned a carrier core and starved
+                // the animation virtual thread in multi-second bursts — the
+                // tape stopped, then jumped as ticks caught up. A short sleep
+                // parks the loop without burning the carrier.
+                try {
+                    Thread.sleep(12);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
             }
         }
     }

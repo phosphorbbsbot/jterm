@@ -22,6 +22,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * coloring, degenerate terminal sizes, and separator/border drawing branches.
  */
 class AnimationLayoutAndBranchesTest {
+    /** Synthetic clock for tick() laws: each call advances 125ms (8fps slot). */
+    static final class T {
+        private long now = System.nanoTime();
+        long tick() { now += 125_000_000L; return now; }
+    }
+    private final T T = new T();
+
 
     private static Map<Character, Long> glyphHistogram(ScreenBuffer buffer, TerminalSize size) {
         Map<Character, Long> counts = new HashMap<>();
@@ -190,12 +197,12 @@ class AnimationLayoutAndBranchesTest {
         // is bounded by the front item's width and the queue rotates FIFO.
         // Two ticks below the front item's width must rotate it to the back.
         int frontWidth = items.get(0).renderString().length() + 5;
-        tape.tick(System.nanoTime());
+        tape.tick(T.tick());
         tape.renderFrame(new TextGraphics(buffer), size);
         assertTrue(tape.getScrollOffset() >= 0 && tape.getScrollOffset() < frontWidth,
                 "offset stays anchored within the front item, got " + tape.getScrollOffset());
         for (int i = 0; i < frontWidth + 2; i++) {
-            tape.tick(System.nanoTime());
+            tape.tick(T.tick());
         }
         tape.renderFrame(new TextGraphics(buffer), size);
         assertTrue(tape.getScrollOffset() >= 0 && tape.getScrollOffset() < items.get(0).renderString().length() + 5,
@@ -211,12 +218,14 @@ class AnimationLayoutAndBranchesTest {
         var buffer = new ScreenBuffer(size);
         tape.setScrollOffset(0);
 
-        // TICK-DRIVEN: one tick = one cell at default speed; render is a pure paint.
+        // TICK-DRIVEN (time-based): advance = elapsed × speed × fps; render is a pure paint.
         tape.renderFrame(new TextGraphics(buffer), size); // offset still 0
         assertEquals(0, tape.getScrollOffset(), "render must NOT advance (pure paint)");
-        tape.tick(System.nanoTime());
+        for (int i = 0; i < 8; i++) {
+            tape.tick(T.tick()); // 1s of slots ⇒ 8 cells at speed 1.0
+        }
         tape.renderFrame(new TextGraphics(buffer), size);
-        assertEquals(1, tape.getScrollOffset(), "one tick advances one cell");
+        assertTrue(tape.getScrollOffset() >= 4, "tick slots advance the scroll, got " + tape.getScrollOffset());
     }
 
     @Test

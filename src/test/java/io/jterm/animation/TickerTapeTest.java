@@ -18,6 +18,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * behavior, green/red coloring, fallback data rendering, and edge cases.
  */
 class TickerTapeTest {
+    /** Synthetic clock for tick() laws: each call advances 125ms (8fps slot). */
+    static final class T {
+        private long now = System.nanoTime();
+        long tick() { now += 125_000_000L; return now; }
+    }
+    private final T T = new T();
+
 
     @Test
     @DisplayName("implements AnimatedBackground contract")
@@ -83,12 +90,14 @@ class TickerTapeTest {
         var size = new TerminalSize(80, 24);
         tape.setScrollOffset(0);
         var buffer = new ScreenBuffer(size);
-        // new contract: tick() advances, renderFrame paints the current offset
-        tape.tick(System.nanoTime());
+        // new contract: tick() advances (time-based), renderFrame paints
+        for (int i = 0; i < 4; i++) {
+            tape.tick(T.tick());
+        }
         int afterFirst = tape.getScrollOffset();
-        assertTrue(afterFirst > 0, "tick() should advance the scroll");
+        assertTrue(afterFirst > 0, "tick() should advance the scroll, got " + afterFirst);
 
-        tape.tick(System.nanoTime());
+        tape.tick(T.tick());
         int afterSecond = tape.getScrollOffset();
         assertTrue(afterSecond > afterFirst, "tick() should keep advancing");
 
@@ -105,11 +114,11 @@ class TickerTapeTest {
         var size = new TerminalSize(80, 24);
         tape.setScrollOffset(0);
         var buffer1 = new ScreenBuffer(size);
-        tape.tick(System.nanoTime());
+        tape.tick(T.tick());
         tape.renderFrame(new TextGraphics(buffer1), size);
 
         var buffer2 = new ScreenBuffer(size);
-        tape.tick(System.nanoTime());
+        tape.tick(T.tick());
         tape.renderFrame(new TextGraphics(buffer2), size);
 
         boolean anyDifferent = false;

@@ -44,6 +44,8 @@ public class TickerTape implements AnimatedBackground {
     private volatile int lastOrderSignature = -1;
     private volatile boolean orderInitialized;
     private long shuffleSeed = -1;
+    private long lastTickNanos;
+    private static final double MAX_CATCHUP_CELLS = 4.0;
 
     /** @param seed non-negative long to pin the shuffle (deterministic order); -1 = random */
     public void setShuffleSeed(long seed) {
@@ -345,7 +347,21 @@ public class TickerTape implements AnimatedBackground {
         if (frontWidth <= 0) {
             return;
         }
-        scrollCarry += scrollSpeed;
+        // TIME-BASED ADVANCE LAW (Joe 2026-10-26: "pauses and jumps"): the
+        // event loop can starve the paint side for seconds at a time; ticking
+        // per FRAME then silently catching up 40 ticks turned each stall into
+        // one visible jump of ~20 cells. Advance by ELAPSED time × speed and
+        // cap the catch-up: a stall reads as a modest pause, never a jump.
+        long now2 = nowNanos > 0 ? nowNanos : System.nanoTime();
+        if (lastTickNanos == 0) {
+            lastTickNanos = now2;
+        }
+        double elapsedCells = (now2 - lastTickNanos) / 1_000_000_000.0 * scrollSpeed * TARGET_FPS;
+        lastTickNanos = now2;
+        if (elapsedCells > MAX_CATCHUP_CELLS) {
+            elapsedCells = MAX_CATCHUP_CELLS; // stalled ⇒ don't teleport
+        }
+        scrollCarry += Math.max(0.0, elapsedCells);
         int advance = (int) Math.floor(scrollCarry);
         scrollCarry -= advance;
         absoluteOffsetCells += advance;

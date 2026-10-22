@@ -17,6 +17,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * column cols-1. Scroll advance must be configurable so hosts can halve it.
  */
 class TickerTapeWireFitTest {
+    /** Synthetic clock for tick() laws: each call advances 125ms (8fps slot). */
+    static final class T {
+        private long now = System.nanoTime();
+        long tick() { now += 125_000_000L; return now; }
+    }
+    private final T T = new T();
+
 
     private static TickerTape liveTape() {
         var tape = new TickerTape(new TerminalSize(80, 1), () -> List.of(
@@ -33,7 +40,7 @@ class TickerTapeWireFitTest {
         var buffer = new ScreenBuffer(new TerminalSize(80, 1));
         tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
         for (int scroll = 0; scroll < 300; scroll++) {
-            tape.tick(System.nanoTime());
+            tape.tick(T.tick());
             tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
             // only the LAST column auto-wraps on real terminals
             var cell = buffer.getCell(79, 0);
@@ -57,8 +64,8 @@ class TickerTapeWireFitTest {
         var fastBuf = new ScreenBuffer(new TerminalSize(80, 1));
         var slowBuf = new ScreenBuffer(new TerminalSize(80, 1));
         for (int i = 0; i < 10; i++) {
-            fast.tick(System.nanoTime());
-            slow.tick(System.nanoTime());
+            fast.tick(T.tick()); // synthetic 125ms slots: fast advances 10 cells
+            slow.tick(T.tick());
         }
         // paint the final offsets
         fast.renderFrame(new TextGraphics(fastBuf), new TerminalSize(80, 1));
@@ -70,8 +77,8 @@ class TickerTapeWireFitTest {
         var mid = liveTape();
         mid.setShuffleSeed(7);
         var midBuf = new ScreenBuffer(new TerminalSize(80, 1));
-        for (int i = 0; i < 5; i++) {
-            mid.tick(System.nanoTime());
+        for (int i = 0; i < 10; i++) {
+            mid.tick(T.tick()); // same 10 synthetic slots as slow — half speed lands half the cells
         }
         mid.renderFrame(new TextGraphics(midBuf), new TerminalSize(80, 1));
         assertEquals(rowText(midBuf, 0), slowRender,
@@ -99,7 +106,9 @@ class TickerTapeWireFitTest {
         }
         assertEquals(first, rowText(buffer, 0),
                 "renderFrame must not advance the scroll — hosts drive it via tick()");
-        tape.tick(System.nanoTime());
+        for (int i = 0; i < 4; i++) {
+            tape.tick(T.tick()); // 0.5s at 8fps ⇒ ~2 cells at default speed
+        }
         tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
         assertNotEquals(first, rowText(buffer, 0), "tick() must advance the scroll");
     }
@@ -361,7 +370,7 @@ class TickerTapeWireFitTest {
         var buffer = new ScreenBuffer(new TerminalSize(80, 1));
         tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
         // scroll partway
-        for (int i = 0; i < 6; i++) tape.tick(System.nanoTime());
+        for (int i = 0; i < 6; i++) tape.tick(T.tick());
         tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
         String before = rowText(buffer, 0);
         // UNIVERSE MUTATES: a quote flaps (symbol briefly missing from supplier)
@@ -391,7 +400,7 @@ class TickerTapeWireFitTest {
         tape.refreshData();
         boolean sawAAPLgone = false;
         for (int i = 0; i < 300; i++) {
-            tape.tick(System.nanoTime());
+            tape.tick(T.tick());
             tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
             if (!rowText(buffer, 0).contains("AAPL")) {
                 sawAAPLgone = true; // exited the window
@@ -400,7 +409,7 @@ class TickerTapeWireFitTest {
         }
         assertTrue(sawAAPLgone, "departed symbol must scroll out of the window");
         for (int i = 0; i < 200 && !rowText(buffer, 0).contains("AAPL"); i++) {
-            tape.tick(System.nanoTime());
+            tape.tick(T.tick());
             tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
         }
         // NOW it returns from the supplier: must append at the BACK of the queue
@@ -425,7 +434,7 @@ class TickerTapeWireFitTest {
                 "the cycle must show incumbents before the returned symbol: [" + row0 + "]");
         java.util.LinkedHashSet<String> seenOrder = new java.util.LinkedHashSet<>();
         for (int i = 0; i < 400 && seenOrder.size() < 3; i++) {
-            tape.tick(System.nanoTime());
+            tape.tick(T.tick());
             tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
             String row = rowText(buffer, 0);
             for (String sym : new String[]{"MSFT", "GOOG", "AAPL"}) {
@@ -478,6 +487,56 @@ class TickerTapeWireFitTest {
         } finally {
             t.stop();
         }
+    }
+
+    @Test
+    @DisplayName("partial-universe seed must not corrupt the shuffle (cover gate)")
+    void partialSeedThenFullUniverseKeepsShuffledOrder() {
+        // supplier primes with ONE symbol, then the full alphabetical ten
+        var full = List.of("AAPL", "AMD", "AMZN", "CRM", "GOOG", "META", "MSFT", "NFLX", "NVDA", "TSLA");
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.function.Supplier<List<TickerTape.TickerItem>> sup = () -> {
+            if (calls.incrementAndGet() == 1) {
+                return List.of(new TickerTape.TickerItem("MSFT", 100.0, 99.0));
+            }
+            List<TickerTape.TickerItem> out = new java.util.ArrayList<>();
+            double p = 100;
+            for (String sym : full) {
+                out.add(new TickerTape.TickerItem(sym, p += 10, p - 1));
+            }
+            return out;
+        };
+        var tape = new TickerTape(new TerminalSize(240, 1), sup);
+        tape.setDemoFallback(false);
+        for (int i = 0; i < 4; i++) {
+            tape.tick(T.tick());
+        }
+        // force refresh (60s gate) — synthetic clock does not move the wall gate,
+        // so call through the public paint path after a real wait is too slow;
+        // instead rely on ctor+first refresh having received only MSFT and the
+        // wire-fit seam: full universe arrives on the next refreshData.
+        // force the supplier refresh directly (the 60s gate is wall-clock)
+        tape.refreshData();
+        for (int i = 0; i < 4; i++) {
+            tape.tick(T.tick());
+        }
+        var buf = new ScreenBuffer(new TerminalSize(240, 1));
+        tape.renderFrame(new TextGraphics(buf), new TerminalSize(240, 1));
+        StringBuilder row = new StringBuilder();
+        for (int x = 0; x < 240; x++) {
+            row.append(buf.getCell(x, 0).character());
+        }
+        String visible = row.toString();
+        // once the full universe lands, the order must NOT be alphabetical
+        // (the MSFT-first seed appended the rest at the back pre-fix). The
+        // widget-level guard: the FIRST non-empty supplier list decides the
+        // order, so this law pins the SOURCE contract instead — the source
+        // must not emit a partial snapshot (LiveTapeSource cover gate).
+        // Widget-side observable: after the full list, AAPL..TSLA all cycle.
+        assertTrue(visible.contains("AAPL") && visible.contains("NVDA") && visible.contains("AMD"),
+                "full universe must join the tape, got: " + visible);
+        // order must not equal the source's alphabetical order
+        assertTrue(!visible.startsWith("AAPL"), "queue must not re-anchor alphabetically, got: " + visible);
     }
 
 }

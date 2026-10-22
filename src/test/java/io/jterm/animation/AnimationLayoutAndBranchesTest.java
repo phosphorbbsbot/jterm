@@ -23,10 +23,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class AnimationLayoutAndBranchesTest {
     /** Synthetic clock for tick() laws: each call advances one frame slot
-     * (1s / TARGET_FPS — currently 4fps = 250ms). */
+     * (1s / TARGET_FPS — currently 8fps = 125ms). */
     static final class T {
         /** Frame slot matching TickerTape.TARGET_FPS (4 ⇒ 250ms). */
-        private static final long SLOT_NANOS = 250_000_000L;
+        private static final long SLOT_NANOS = 125_000_000L;
         private long now = System.nanoTime();
         long tick() { now += SLOT_NANOS; return now; }
     }

@@ -22,7 +22,7 @@ class TickerTapeWireFitTest {
      * credits exactly {@code speed} cells per slot at any fps). */
     static final class T {
         /** Frame slot matching TickerTape.TARGET_FPS (4 ⇒ 250ms). */
-        private static final long SLOT_NANOS = 250_000_000L;
+        private static final long SLOT_NANOS = 125_000_000L;
         private long now = System.nanoTime();
         long tick() { now += SLOT_NANOS; return now; }
         long jumpSeconds(double seconds) { now += (long) (seconds * 1_000_000_000L); return now; }

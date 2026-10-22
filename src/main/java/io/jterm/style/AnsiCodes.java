@@ -31,6 +31,20 @@ public final class AnsiCodes {
     /** DEC private mode 2026 — end a synchronized (ESU) screen update. */
     public static final String END_SYNC_UPDATE = CSI + "?2026l";
 
+    /**
+     * DCH (Delete Character) — delete {@code n} characters at the cursor,
+     * shifting the remainder of the line left and opening blanks at the end.
+     * VT102/ECMA-48; how a scrolling marquee row is shifted client-side
+     * without a full-row rewrite.
+     *
+     * @param n cells to delete, clamped to 1..255
+     * @return the escape bytes
+     */
+    public static byte[] deleteChars(int n) {
+        int v = Math.max(1, Math.min(255, n));
+        return (CSI + v + "P").getBytes(StandardCharsets.UTF_8);
+    }
+
     private AnsiCodes() {}
 
     /**

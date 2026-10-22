@@ -254,6 +254,8 @@ public class DefaultScreen implements Screen {
                 doCompleteRefresh();
             } else if (deltas.size() > (frontBuffer.size().area() / 2)) {
                 doCompleteRefresh();
+            } else if (doRowShiftRefresh(deltas)) {
+                // fully handled: every changed row was a clean left-shift
             } else {
                 doDeltaRefresh(deltas);
             }
@@ -342,6 +344,101 @@ public class DefaultScreen implements Screen {
             if (diff.cell().isDoubleWidth()) lastCol++;
         }
         terminal.flush();
+    }
+
+    /**
+     * Row-shift refresh (2026-10-22, Joe's tape freeze): when a delta's changed
+     * rows are each a pure LEFT-SHIFT of their previous content — every cell
+     * {@code back[c] == front[c+k]} (content AND style move together), no
+     * double-width cells — emit DCH (CSI Ps P) per row + write only the
+     * {@code k} entering trailing cells. A full-width marquee frame drops from
+     * a whole-row SGR rewrite (~1.5KB) to a cursor-home + DCH + k cells
+     * (~20-40B); slow client renderers (phosphor relay, tmux, busy
+     * Terminal.app) that visibly stuttered ~1-1.5s on every tape rotation get
+     * the row shifted by the terminal itself. Rows that do not qualify paint
+     * through the classic delta path; a frame of only-qualifying rows leaves
+     * nothing for it. Returns true when the whole frame was handled here.
+     */
+    static final int ROW_SHIFT_MAX_CELLS = 4;
+
+    private boolean doRowShiftRefresh(List<ScreenBuffer.CellDiff> diffs) throws IOException {
+        if (diffs.isEmpty()) {
+            return false;
+        }
+        var rowsWithDeltas = new java.util.TreeSet<Integer>();
+        for (var d : diffs) {
+            rowsWithDeltas.add(d.row());
+        }
+        var shiftK = new java.util.HashMap<Integer, Integer>();
+        var remaining = new java.util.ArrayList<ScreenBuffer.CellDiff>();
+        for (int r : rowsWithDeltas) {
+            Integer k = shiftForRow(r);
+            if (k != null) {
+                shiftK.put(r, k);
+            }
+        }
+        if (shiftK.isEmpty()) {
+            return false;
+        }
+        for (var d : diffs) {
+            if (!shiftK.containsKey(d.row())) {
+                remaining.add(d);
+            }
+        }
+        for (var e : shiftK.entrySet()) {
+            int r = e.getKey();
+            int k = e.getValue();
+            terminal.setCursorPosition(0, r);
+            byte[] dch = AnsiCodes.deleteChars(k);
+            if (dch.length > 0) terminal.writeRaw(dch);
+            for (int c = size.columns() - k; c < size.columns(); c++) {
+                var cell = backBuffer.getCell(c, r);
+                byte[] sgr = sgrState.transitionTo(cell);
+                if (sgr.length > 0) terminal.writeRaw(sgr);
+                terminal.putCharacter(emittable(cell));
+            }
+        }
+        if (!remaining.isEmpty()) {
+            doDeltaRefresh(remaining);
+        }
+        terminal.flush();
+        return true;
+    }
+
+    /**
+     * Returns the left-shift amount {@code k} (1..ROW_SHIFT_MAX_CELLS) if the
+     * row's back buffer is the front buffer shifted left by exactly {@code k}
+     * cells (equal content AND style, no double-width cells, at least one
+     * cell genuinely differs), else null.
+     */
+    private Integer shiftForRow(int r) {
+        int cols = size.columns();
+        for (int k = 1; k <= ROW_SHIFT_MAX_CELLS && k < cols; k++) {
+            boolean all = true;
+            boolean anyChange = false;
+            for (int c = 0; c < cols - k; c++) {
+                var back = backBuffer.getCell(c, r);
+                var old = frontBuffer.getCell(c + k, r);
+                if (back.isDoubleWidth() || old.isDoubleWidth()) {
+                    all = false;
+                    break;
+                }
+                if (!back.equals(old)) {
+                    all = false;
+                    break;
+                }
+                if (!anyChange) {
+                    var backOld = frontBuffer.getCell(c, r);
+                    if (!back.equals(backOld)) {
+                        anyChange = true;
+                    }
+                }
+            }
+            if (all && anyChange) {
+                return k;
+            }
+        }
+        return null;
     }
 
     /**

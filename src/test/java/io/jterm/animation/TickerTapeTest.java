@@ -19,10 +19,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class TickerTapeTest {
     /** Synthetic clock for tick() laws: each call advances one frame slot
-     * (1s / TARGET_FPS — currently 4fps = 250ms). */
+     * (1s / TARGET_FPS — currently 8fps = 125ms). */
     static final class T {
         /** Frame slot matching TickerTape.TARGET_FPS (4 ⇒ 250ms). */
-        private static final long SLOT_NANOS = 250_000_000L;
+        private static final long SLOT_NANOS = 125_000_000L;
         private long now = System.nanoTime();
         long tick() { now += SLOT_NANOS; return now; }
     }
@@ -34,9 +34,7 @@ class TickerTapeTest {
     void implementsAnimatedBackground() {
         var tape = new TickerTape(new TerminalSize(80, 24));
         assertTrue(tape instanceof AnimatedBackground);
-        // 2026-10-22: capped 8→4 to halve client redraw cost at identical
-        // motion (advance is time-based); the law tracks the ceiling, not 8.
-        assertEquals(4, tape.targetFps());
+        assertEquals(8, tape.targetFps());
         tape.start();
         assertTrue(tape.isRunning());
         tape.stop();

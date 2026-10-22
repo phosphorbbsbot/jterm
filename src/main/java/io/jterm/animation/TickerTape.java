@@ -29,7 +29,7 @@ public class TickerTape implements AnimatedBackground {
      * which Joe sees as a 1-1.5s freeze at every left-edge exit (2026-10-22).
      * 4fps keeps the scroll perceptibly smooth while halving that cost.
      */
-    private static final int TARGET_FPS = 4;
+    private static final int TARGET_FPS = 8;
     private static final double DEFAULT_SCROLL_SPEED_CELLS = 1.0;
 
     /**

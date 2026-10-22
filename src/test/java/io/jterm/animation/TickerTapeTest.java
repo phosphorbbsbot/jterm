@@ -53,8 +53,8 @@ class TickerTapeTest {
         var size = new TerminalSize(80, 24);
         var buffer = new ScreenBuffer(size);
         tape.renderFrame(new TextGraphics(buffer), size);
-        assertEquals(AnsiColor.WHITE, buffer.getCell(0, 0).bg());
-        assertEquals(AnsiColor.WHITE, buffer.getCell(79, 23).bg());
+        assertEquals(AnsiColor.BRIGHT_WHITE, buffer.getCell(0, 0).bg());
+        assertEquals(AnsiColor.BRIGHT_WHITE, buffer.getCell(79, 23).bg());
     }
 
     @Test
@@ -212,7 +212,7 @@ class TickerTapeTest {
         assertEquals(AnsiColor.BRIGHT_GREEN, buffer.getCell(5, 0).fg(), "price must be green when up");
         boolean sawWhiteBg = false;
         for (int c = 0; c < 80; c++) {
-            if (buffer.getCell(c, 0).bg() == AnsiColor.WHITE) { sawWhiteBg = true; break; }
+            if (buffer.getCell(c, 0).bg() == AnsiColor.BRIGHT_WHITE) { sawWhiteBg = true; break; }
         }
         assertTrue(sawWhiteBg, "bar background must be white");
         // down tape

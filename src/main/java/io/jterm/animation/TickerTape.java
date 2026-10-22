@@ -152,7 +152,7 @@ public class TickerTape implements AnimatedBackground {
         }
 
         // Background. CNBC palette: white bar.
-        TextCell bg = new TextCell(' ', AnsiColor.WHITE, AnsiColor.WHITE);
+        TextCell bg = new TextCell(' ', AnsiColor.BRIGHT_WHITE, AnsiColor.BRIGHT_WHITE);
         graphics.fillRectangle(0, 0, size.columns(), size.rows(), bg);
 
         if (items == null || items.isEmpty()) {
@@ -187,11 +187,11 @@ public class TickerTape implements AnimatedBackground {
                 char ch = rendered.charAt(k);
                 // CNBC palette: BLUE symbol, GREEN/RED price+change (by sign)
                 AnsiColor fg = (k < symLen) ? AnsiColor.BLUE : signColor;
-                graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.WHITE, SGR.BOLD));
+                graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.BRIGHT_WHITE, SGR.BOLD));
             }
             // separator between items
             for (int k = 0; k < SEPARATOR.length() && col < paintCols; k++, col++) {
-                graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BLUE, AnsiColor.WHITE, SGR.BOLD));
+                graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BLUE, AnsiColor.BRIGHT_WHITE, SGR.BOLD));
             }
             idx++;
         }
@@ -212,10 +212,10 @@ public class TickerTape implements AnimatedBackground {
                     for (int k = 0; k < rendered.length() && col < paintCols; k++, col++) {
                         char ch = rendered.charAt(k);
                         AnsiColor fg = (k < symLen2) ? AnsiColor.BLUE : sign;
-                        graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.WHITE, SGR.BOLD));
+                        graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.BRIGHT_WHITE, SGR.BOLD));
                     }
                     for (int k = 0; k < SEPARATOR.length() && col < paintCols; k++, col++) {
-                        graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BLUE, AnsiColor.WHITE, SGR.BOLD));
+                        graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BLUE, AnsiColor.BRIGHT_WHITE, SGR.BOLD));
                     }
                 }
             }

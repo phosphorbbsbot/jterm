@@ -5,6 +5,7 @@ import io.jterm.core.TerminalSize;
 import io.jterm.style.TextCell;
 import io.jterm.style.AnsiColor;
 import io.jterm.style.SGR;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;
@@ -74,5 +75,25 @@ class ScreenBufferTest {
         var dst = new ScreenBuffer(new TerminalSize(5, 3));
         dst.copyFrom(src);
         assertEquals('A', dst.getCell(0, 0).character().charAt(0));
+    }
+
+    @Test
+    @DisplayName("diffFrom: identical content yields ZERO deltas (value equality, wire-quiet frames)")
+    void identicalBuffersDiffToZero() {
+        var size = new TerminalSize(80, 24);
+        var a = new ScreenBuffer(size);
+        var b = new ScreenBuffer(size);
+        var g = new io.jterm.graphics.TextGraphics(a);
+        var cell = new TextCell('X', AnsiColor.BRIGHT_GREEN, AnsiColor.BLACK, SGR.BOLD);
+        g.setCell(3, 4, cell);
+        var g2 = new io.jterm.graphics.TextGraphics(b);
+        g2.setCell(3, 4, cell);
+        assertTrue(a.diffFrom(b).isEmpty(), "identical content must diff to zero deltas");
+        g2.setCell(5, 4, new TextCell('Y', AnsiColor.BRIGHT_GREEN, AnsiColor.BLACK, SGR.BOLD));
+        assertEquals(1, a.diffFrom(b).size(), "a single char change must yield exactly one delta");
+        g2.setCell(5, 4, TextCell.EMPTY); // revert to buffer default
+        assertEquals(0, a.diffFrom(b).size(), "reverting must return to zero deltas");
+        g2.setCell(3, 4, new TextCell('X', AnsiColor.BLUE, AnsiColor.BLACK, SGR.BOLD));
+        assertEquals(1, a.diffFrom(b).size(), "a color-only change must count");
     }
 }

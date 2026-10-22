@@ -136,4 +136,25 @@ public record TextCell(String character, Color fg, Color bg, EnumSet<SGR> modifi
             || Character.UnicodeBlock.of(c) == Character.UnicodeBlock.HANGUL_SYLLABLES
             || Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS;
     }
+
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof TextCell)) return false;
+        TextCell other = (TextCell) o;
+        return character.equals(other.character)
+                && fg == other.fg
+                && bg == other.bg
+                && modifiers.equals(other.modifiers);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = character.hashCode();
+        result = 31 * result + System.identityHashCode(fg);
+        result = 31 * result + System.identityHashCode(bg);
+        result = 31 * result + modifiers.hashCode();
+        return result;
+    }
 }

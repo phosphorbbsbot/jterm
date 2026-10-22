@@ -186,14 +186,20 @@ class AnimationLayoutAndBranchesTest {
                 .sum() + 5 * items.size();
         assertTrue(totalWidth > size.columns(), "test premise: tape wider than terminal");
 
-        // One step below the width advances plainly...
-        tape.setScrollOffset(totalWidth - 2);
+        // QUEUE CONTRACT: the scroll advances via tick(); the offset consumed
+        // is bounded by the front item's width and the queue rotates FIFO.
+        // Two ticks below the front item's width must rotate it to the back.
+        int frontWidth = items.get(0).renderString().length() + 5;
+        tape.tick(System.nanoTime());
         tape.renderFrame(new TextGraphics(buffer), size);
-        assertEquals(totalWidth - 1, tape.getScrollOffset(), "one below width advances plainly");
-
-        // ...and the next wrap the offset back to 0.
+        assertTrue(tape.getScrollOffset() >= 0 && tape.getScrollOffset() < frontWidth,
+                "offset stays anchored within the front item, got " + tape.getScrollOffset());
+        for (int i = 0; i < frontWidth + 2; i++) {
+            tape.tick(System.nanoTime());
+        }
         tape.renderFrame(new TextGraphics(buffer), size);
-        assertEquals(0, tape.getScrollOffset(), "offset must wrap modulo totalWidth");
+        assertTrue(tape.getScrollOffset() >= 0 && tape.getScrollOffset() < items.get(0).renderString().length() + 5,
+                "after a full item passes, rotation keeps the anchor inside the new front item");
     }
 
     @Test
@@ -205,15 +211,12 @@ class AnimationLayoutAndBranchesTest {
         var buffer = new ScreenBuffer(size);
         tape.setScrollOffset(0);
 
-        int first = -1;
-        for (int i = 0; i < 60; i++) {
-            tape.renderFrame(new TextGraphics(buffer), size);
-            if (first < 0) first = tape.getScrollOffset();
-        }
-        // "GOOG 101.10 1.10%" is 17 chars + 5-char separator = 22; scrolling one
-        // cell per frame over 60 frames must revisit offset 0 at least twice.
-        assertTrue(first >= 0, "frame count must run at least once");
-        assertEquals(1, first, "offset starts at 1 after first frame");
+        // TICK-DRIVEN: one tick = one cell at default speed; render is a pure paint.
+        tape.renderFrame(new TextGraphics(buffer), size); // offset still 0
+        assertEquals(0, tape.getScrollOffset(), "render must NOT advance (pure paint)");
+        tape.tick(System.nanoTime());
+        tape.renderFrame(new TextGraphics(buffer), size);
+        assertEquals(1, tape.getScrollOffset(), "one tick advances one cell");
     }
 
     @Test
@@ -232,7 +235,7 @@ class AnimationLayoutAndBranchesTest {
         for (int c = 0; c < size.columns() && !sawWhite; c++) {
             TextCell cell = buffer.getCell(c, 1);
             if (cell.character().charAt(0) == '|') {
-                assertEquals(AnsiColor.BRIGHT_WHITE, cell.fg(), "separator must be bright white");
+                assertEquals(AnsiColor.BLUE, cell.fg(), "separator must be blue (CNBC palette)");
                 sawWhite = true;
             }
         }

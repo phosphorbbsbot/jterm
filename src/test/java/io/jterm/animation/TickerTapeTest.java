@@ -2,6 +2,7 @@ package io.jterm.animation;
 
 import io.jterm.core.TerminalSize;
 import io.jterm.graphics.TextGraphics;
+import io.jterm.graphics.TextGraphics;
 import io.jterm.screen.ScreenBuffer;
 import io.jterm.style.AnsiColor;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +40,38 @@ class TickerTapeTest {
         assertTrue(tape.isRunning());
         tape.stop();
         assertFalse(tape.isRunning());
+    }
+
+    @Test
+    @DisplayName("the bar advances visually through the separator pass — no dead frames at item exit")
+    void separatorCrossingNeverFreezes() {
+        // Joe 2026-10-22: 'as a symbol disappears, it pauses ~1.5s, then jumps
+        // to catch up' — at 4 cells/s, a 3-char separator crossing that fails
+        // to crop leaves the bar STATIC for its whole pass, then the rotation
+        // snaps it. The law: every frame of the crossing renders DIFFERENT
+        // row content, and the rotation frame continues the motion.
+        var item = new TickerTape.TickerItem("ABCD", 100.00, 90.00);
+        var tape = new TickerTape(new TerminalSize(40, 3), () -> List.of(item));
+        tape.setScrollSpeed(1.0); // 1 cell/tick: every frame must move
+        tape.tick(T.tick());
+        var screen = new ScreenBuffer(new TerminalSize(40, 3));
+        var g = new TextGraphics(screen);
+        List<String> frames = new java.util.ArrayList<>();
+        // ~24 ticks spans the full item text (18 chars) + separator (3)
+        for (int i = 0; i < 24; i++) {
+            tape.renderFrame(g, new TerminalSize(40, 3));
+            var sb = new StringBuilder();
+            for (int c = 0; c < 40; c++) {
+                sb.append(screen.getCell(c, 2).character());
+            }
+            frames.add(sb.toString());
+            tape.tick(T.tick());
+        }
+        for (int i = 1; i < frames.size(); i++) {
+            assertNotEquals(frames.get(i - 1), frames.get(i),
+                    "consecutive frames identical → the bar froze; frame " + i
+                            + " and " + (i - 1) + " both:\"" + frames.get(i) + "\"");
+        }
     }
 
     @Test

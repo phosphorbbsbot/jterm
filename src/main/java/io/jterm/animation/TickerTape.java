@@ -21,6 +21,9 @@ import java.util.function.Supplier;
  */
 public class TickerTape implements AnimatedBackground {
 
+    // TAPE-OFFSET probe (see renderFrame)
+    private volatile long lastOffsetLogMs;
+
     /**
      * Tape repaint ceiling. Advance is TIME-BASED (elapsed), so cutting fps
      * halves the client's redraw work with identical motion. 8fps painted the
@@ -205,6 +208,17 @@ public class TickerTape implements AnimatedBackground {
             offsetCells = absoluteOffsetCells;
             ordered = (orderedItems.isEmpty() && items != null && !items.isEmpty()) ? items : orderedItems;
         }
+        // TAPE-OFFSET PROBE (Joe 2026-10-26: bimodal visual pause every
+        // rotation, all other probes silent): every paint logs the absolute
+        // offset; a FLAT STRETCH server-side = the clock stopped advancing
+        // (tick logic); an ADVANCING offset during a client-side pause = the
+        // bytes/content left the server. Sampled, self-suppressing.
+        long nowProbe = System.currentTimeMillis();
+        if (nowProbe - lastOffsetLogMs >= 500) {
+            lastOffsetLogMs = nowProbe;
+            java.util.logging.Logger.getLogger(TickerTape.class.getName())
+                    .info("[TAPE-OFFSET] " + offsetCells);
+        }
         if (ordered == null || ordered.isEmpty()) {
             return;
         }
@@ -219,16 +233,22 @@ public class TickerTape implements AnimatedBackground {
             String rendered = item.renderString();
             int symLen = item.symbol().length();
             AnsiColor signColor = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
-            int startChar = (idx == 0) ? Math.min(cellsIntoFront, rendered.length()) : 0;
-            for (int k = startChar; k < rendered.length() && col < paintCols; k++, col++) {
-                char ch = rendered.charAt(k);
-                // CNBC palette: BLUE symbol, GREEN/RED price+change (by sign)
-                AnsiColor fg = (k < symLen) ? AnsiColor.BLUE : signColor;
+            // SMOOTH-SEPARATOR LAW (Joe 2026-10-22: the bar froze ~1.5s at
+            // every left-edge exit, then jumped): the scroll crop must pass
+            // THROUGH the front item's separator, not stop at its text end —
+            // the old code painted the whole separator static while
+            // cellsIntoFront crossed [len, len+sep), freezing the row for the
+            // separator's pass (~0.75-1.5s at tape speed) and jumping at the
+            // rotation. The front unit = item text + separator, cropped on
+            // CHAR-BASIS with the separator's chars styled like the text tail.
+            String frontUnit = (idx == 0) ? rendered + SEPARATOR : rendered + SEPARATOR;
+            int startChar = (idx == 0) ? Math.min(cellsIntoFront, frontUnit.length()) : 0;
+            for (int k = startChar; k < frontUnit.length() && col < paintCols; k++, col++) {
+                char ch = frontUnit.charAt(k);
+                boolean inText = k < symLen;
+                boolean inSep = k >= rendered.length();
+                AnsiColor fg = inSep ? AnsiColor.BLUE : (inText ? AnsiColor.BLUE : signColor);
                 graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.BRIGHT_WHITE, SGR.BOLD));
-            }
-            // separator between items
-            for (int k = 0; k < SEPARATOR.length() && col < paintCols; k++, col++) {
-                graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BLUE, AnsiColor.BRIGHT_WHITE, SGR.BOLD));
             }
             idx++;
         }

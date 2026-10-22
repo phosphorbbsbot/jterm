@@ -439,4 +439,19 @@ class TickerTapeWireFitTest {
         assertEquals("AAPL", list.get(2),
                 "returning symbol must re-enter at the BACK of the queue (the two incumbents lead, any phase), got " + list);
     }
+
+    @Test
+    @DisplayName("demo residue: real data arriving after an empty-supplier ctor purges demo entries")
+    void realDataPurgesDemoResidue() {
+        var supplier = new java.util.concurrent.atomic.AtomicReference<java.util.List<TickerTape.TickerItem>>();
+        var tape = new TickerTape(new TerminalSize(80, 1), supplier::get); // ctor refresh: supplier EMPTY → demo learned
+        supplier.set(List.of(new TickerTape.TickerItem("AAPL", 343.99, 339.52))); // real data lands
+        tape.refreshData();
+        var buffer = new ScreenBuffer(new TerminalSize(80, 1));
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String row = rowText(buffer, 0);
+        assertTrue(row.contains("343.99"), "real quote must render: [" + row + "]");
+        assertFalse(row.contains("189.52") || row.contains("875.28") || row.contains("141.80"),
+                "demo residue must NOT render next to the real quote: [" + row + "]");
+    }
 }

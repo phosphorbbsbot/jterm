@@ -240,6 +240,11 @@ public class TickerTape implements AnimatedBackground {
      * Prices refresh in place; symbols gone from the supplier fall out.
      */
     private void regenerateOrder(List<TickerItem> fresh) {
+        regenerateOrder(fresh, true);
+    }
+
+    /** @param realData false when `fresh` is demo/decorative data (never flap-kept, never marks real-backed). */
+    private void regenerateOrder(List<TickerItem> fresh, boolean realData) {
         if (fresh == null) {
             orderedItems = List.of();
             orderSymbols.clear();
@@ -250,7 +255,9 @@ public class TickerTape implements AnimatedBackground {
         for (TickerItem it : fresh) {
             bySym.put(it.symbol(), it);
             everSeen.put(it.symbol(), it);
-            realBacked.add(it.symbol());
+            if (realData) {
+                realBacked.add(it.symbol());
+            }
         }
         java.util.Random rnd = shuffleSeed >= 0 ? new java.util.Random(shuffleSeed) : orderRandom;
         if (!orderInitialized) {
@@ -496,9 +503,9 @@ public class TickerTape implements AnimatedBackground {
             // queue resets so real data enters cleanly when it arrives.
             this.items = (demoFallback && !supplierFailed) ? FALLBACK_ITEMS : null;
             if (this.items == null || !demoFallback) {
-                regenerateOrder(null);
+                regenerateOrder(null, true);
             } else {
-                regenerateOrder(this.items); // pure demo mode (library use)
+                regenerateOrder(this.items, false); // pure demo mode (library use)
             }
             lastRefreshMs = System.currentTimeMillis();
             return;

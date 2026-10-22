@@ -525,7 +525,12 @@ public class TickerTape implements AnimatedBackground {
             } else {
                 regenerateOrder(this.items, false); // pure demo mode (library use)
             }
-            lastRefreshMs = System.currentTimeMillis();
+            // BLANK-STATE RETRY LAW (Joe 2026-10-26: white empty tape): the
+            // closes snapshot can land seconds after open; waiting a full 60s
+            // cycle left a blank bar up for a minute+. Empty states re-check
+            // every 10s — the 60s cadence is for REFRESHING shown data, not
+            // for FINDING the first data.
+            lastRefreshMs = System.currentTimeMillis() - (REFRESH_INTERVAL_MS - 10_000);
             return;
         }
         this.items = real;

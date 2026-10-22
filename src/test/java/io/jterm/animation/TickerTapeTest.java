@@ -83,13 +83,19 @@ class TickerTapeTest {
         var size = new TerminalSize(80, 24);
         tape.setScrollOffset(0);
         var buffer = new ScreenBuffer(size);
-        tape.renderFrame(new TextGraphics(buffer), size);
+        // new contract: tick() advances, renderFrame paints the current offset
+        tape.tick(System.nanoTime());
         int afterFirst = tape.getScrollOffset();
-        assertTrue(afterFirst > 0, "scroll offset should advance");
+        assertTrue(afterFirst > 0, "tick() should advance the scroll");
 
-        tape.renderFrame(new TextGraphics(buffer), size);
+        tape.tick(System.nanoTime());
         int afterSecond = tape.getScrollOffset();
-        assertTrue(afterSecond > afterFirst, "scroll offset should keep advancing");
+        assertTrue(afterSecond > afterFirst, "tick() should keep advancing");
+
+        int beforePaint = tape.getScrollOffset();
+        tape.renderFrame(new TextGraphics(buffer), size);
+        assertEquals(beforePaint, tape.getScrollOffset(),
+                "renderFrame must be a pure paint (no advance)");
     }
 
     @Test
@@ -99,9 +105,11 @@ class TickerTapeTest {
         var size = new TerminalSize(80, 24);
         tape.setScrollOffset(0);
         var buffer1 = new ScreenBuffer(size);
+        tape.tick(System.nanoTime());
         tape.renderFrame(new TextGraphics(buffer1), size);
 
         var buffer2 = new ScreenBuffer(size);
+        tape.tick(System.nanoTime());
         tape.renderFrame(new TextGraphics(buffer2), size);
 
         boolean anyDifferent = false;

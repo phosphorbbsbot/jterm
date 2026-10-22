@@ -33,11 +33,12 @@ class TickerTapeWireFitTest {
         var buffer = new ScreenBuffer(new TerminalSize(80, 1));
         tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
         for (int scroll = 0; scroll < 300; scroll++) {
+            tape.tick(System.nanoTime());
+            tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
             // only the LAST column auto-wraps on real terminals
             var cell = buffer.getCell(79, 0);
             assertEquals(" ", cell.character(),
                     "column 79 painted after " + scroll + " scrolls — would wrap on real terminals");
-            tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
         }
     }
 
@@ -54,20 +55,24 @@ class TickerTapeWireFitTest {
         var fastBuf = new ScreenBuffer(new TerminalSize(80, 1));
         var slowBuf = new ScreenBuffer(new TerminalSize(80, 1));
         for (int i = 0; i < 10; i++) {
-            fast.renderFrame(new TextGraphics(fastBuf), new TerminalSize(80, 1));
-            slow.renderFrame(new TextGraphics(slowBuf), new TerminalSize(80, 1));
+            fast.tick(System.nanoTime());
+            slow.tick(System.nanoTime());
         }
+        // paint the final offsets
+        fast.renderFrame(new TextGraphics(fastBuf), new TerminalSize(80, 1));
+        slow.renderFrame(new TextGraphics(slowBuf), new TerminalSize(80, 1));
         String fastRender = rowText(fastBuf, 0);
         String slowRender = rowText(slowBuf, 0);
         assertNotEquals(fastRender, slowRender, "speeds identical — setScrollSpeed had no effect");
-        // slow must lag fast by exactly 5 cell-steps after 10 frames (half speed)
+        // slow must lag fast by exactly 5 cell-steps after 10 ticks (half speed)
         var mid = liveTape();
         var midBuf = new ScreenBuffer(new TerminalSize(80, 1));
         for (int i = 0; i < 5; i++) {
-            mid.renderFrame(new TextGraphics(midBuf), new TerminalSize(80, 1));
+            mid.tick(System.nanoTime());
         }
+        mid.renderFrame(new TextGraphics(midBuf), new TerminalSize(80, 1));
         assertEquals(rowText(midBuf, 0), slowRender,
-                "slow tape after 10 frames should equal default tape after 5");
+                "slow tape after 10 ticks should equal default tape after 5");
     }
 
     private static String rowText(ScreenBuffer buf, int row) {
@@ -76,5 +81,23 @@ class TickerTapeWireFitTest {
             sb.append(buf.getCell(c, row).character());
         }
         return sb.toString();
+    }
+
+
+    @Test
+    @DisplayName("renderFrame paints without advancing; tick() advances")
+    void advanceIsDrivenByTickNotRender() {
+        var tape = liveTape();
+        var buffer = new ScreenBuffer(new TerminalSize(80, 1));
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String first = rowText(buffer, 0);
+        for (int i = 0; i < 20; i++) {
+            tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        }
+        assertEquals(first, rowText(buffer, 0),
+                "renderFrame must not advance the scroll — hosts drive it via tick()");
+        tape.tick(System.nanoTime());
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        assertNotEquals(first, rowText(buffer, 0), "tick() must advance the scroll");
     }
 }

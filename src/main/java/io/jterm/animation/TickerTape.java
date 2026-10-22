@@ -142,12 +142,9 @@ public class TickerTape implements AnimatedBackground {
             return;
         }
 
-        // Fractional accumulate-advance: carry sub-cell remainders so the
-        // effective speed is exactly scrollSpeed cells/frame over time.
-        scrollCarry += scrollSpeed;
-        int advance = (int) Math.floor(scrollCarry);
-        scrollCarry -= advance;
-        scrollOffset = (scrollOffset + advance) % totalWidth;
+        // Advance is driven by tick() only — hosts repaint independently of
+        // the animation clock, and renderFrame must be idempotent per offset
+        // (blitting a cached offset twice must produce the same row).
 
         // REAL TERMINAL LAW: writing a character into the last column of the
         // bottom row makes real terminals auto-wrap to the next line. The
@@ -180,6 +177,43 @@ public class TickerTape implements AnimatedBackground {
 
             graphics.setCell(effectiveCol, row, new TextCell(ch, fg, AnsiColor.BLACK, sgr));
         }
+    }
+
+    /** Full cycle width for the given items (" + SEPARATOR " between rendered items). */
+    private static int paddedWidth(List<TickerItem> current) {
+        StringBuilder sb = new StringBuilder();
+        for (TickerItem item : current) {
+            if (!sb.isEmpty()) {
+                sb.append(SEPARATOR);
+            }
+            sb.append(item.renderString());
+        }
+        return sb.isEmpty() ? 0 : sb.length() + SEPARATOR.length();
+    }
+
+    @Override
+    /**
+     * Advances the scroll state for one animation frame (scrollSpeed cells,
+     * fractionally carried). The paint path ({@code renderFrame}) never
+     * advances — hosts repaint independently of the animation clock.
+     */
+    public void tick(long nowNanos) {
+        // Periodically refresh prices from the data source
+        if (System.currentTimeMillis() - lastRefreshMs >= REFRESH_INTERVAL_MS) {
+            refreshData();
+        }
+        List<TickerItem> current = items;
+        if (current == null || current.isEmpty()) {
+            return;
+        }
+        int totalWidth = paddedWidth(current);
+        if (totalWidth <= 0) {
+            return;
+        }
+        scrollCarry += scrollSpeed;
+        int advance = (int) Math.floor(scrollCarry);
+        scrollCarry -= advance;
+        scrollOffset = (scrollOffset + advance) % totalWidth;
     }
 
     @Override

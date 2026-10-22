@@ -21,7 +21,15 @@ import java.util.function.Supplier;
  */
 public class TickerTape implements AnimatedBackground {
 
-    private static final int TARGET_FPS = 8;
+    /**
+     * Tape repaint ceiling. Advance is TIME-BASED (elapsed), so cutting fps
+     * halves the client's redraw work with identical motion. 8fps painted the
+     * full-width bar 8×/s — and on slower renderers (phosphor-ios relay,
+     * tmux) the ROTATION frame rewrites the entire bar row with its SGR runs,
+     * which Joe sees as a 1-1.5s freeze at every left-edge exit (2026-10-22).
+     * 4fps keeps the scroll perceptibly smooth while halving that cost.
+     */
+    private static final int TARGET_FPS = 4;
     private static final double DEFAULT_SCROLL_SPEED_CELLS = 1.0;
 
     /**

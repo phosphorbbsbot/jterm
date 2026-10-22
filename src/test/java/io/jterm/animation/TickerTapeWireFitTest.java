@@ -17,10 +17,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * column cols-1. Scroll advance must be configurable so hosts can halve it.
  */
 class TickerTapeWireFitTest {
-    /** Synthetic clock for tick() laws: each call advances 125ms (8fps slot). */
+    /** Synthetic clock for tick() laws: each call advances one frame slot
+     * (1s / TARGET_FPS — currently 4fps = 250ms; the elapsed-based advance
+     * credits exactly {@code speed} cells per slot at any fps). */
     static final class T {
+        /** Frame slot matching TickerTape.TARGET_FPS (4 ⇒ 250ms). */
+        private static final long SLOT_NANOS = 250_000_000L;
         private long now = System.nanoTime();
-        long tick() { now += 125_000_000L; return now; }
+        long tick() { now += SLOT_NANOS; return now; }
         long jumpSeconds(double seconds) { now += (long) (seconds * 1_000_000_000L); return now; }
     }
     private final T T = new T();

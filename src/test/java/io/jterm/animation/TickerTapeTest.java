@@ -53,8 +53,8 @@ class TickerTapeTest {
         var size = new TerminalSize(80, 24);
         var buffer = new ScreenBuffer(size);
         tape.renderFrame(new TextGraphics(buffer), size);
-        assertEquals(AnsiColor.BLACK, buffer.getCell(0, 0).bg());
-        assertEquals(AnsiColor.BLACK, buffer.getCell(79, 23).bg());
+        assertEquals(AnsiColor.WHITE, buffer.getCell(0, 0).bg());
+        assertEquals(AnsiColor.WHITE, buffer.getCell(79, 23).bg());
     }
 
     @Test
@@ -198,5 +198,30 @@ class TickerTapeTest {
         assertTrue(rendered.contains("SPY"), "render string should contain symbol");
         assertTrue(rendered.contains("500.00"), "render string should contain price");
         assertTrue(rendered.contains("1.01%"), "render string should contain percent change");
+    }
+
+    @Test
+    @DisplayName("CNBC palette: white bar, blue symbol, green/red price by sign")
+    void cnbcPalette() {
+        var tape = new TickerTape(new TerminalSize(80, 1), () -> List.of(
+            new TickerTape.TickerItem("AAPL", 100.0, 90.0)));  // +11% → green price
+        tape.setDemoFallback(false);
+        var buffer = new ScreenBuffer(new TerminalSize(80, 1));
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        assertEquals(AnsiColor.BLUE, buffer.getCell(0, 0).fg(), "symbol must be blue");
+        assertEquals(AnsiColor.BRIGHT_GREEN, buffer.getCell(5, 0).fg(), "price must be green when up");
+        boolean sawWhiteBg = false;
+        for (int c = 0; c < 80; c++) {
+            if (buffer.getCell(c, 0).bg() == AnsiColor.WHITE) { sawWhiteBg = true; break; }
+        }
+        assertTrue(sawWhiteBg, "bar background must be white");
+        // down tape
+        var down = new TickerTape(new TerminalSize(80, 1), () -> List.of(
+            new TickerTape.TickerItem("AAPL", 90.0, 100.0)));  // -10% → red price
+        down.setDemoFallback(false);
+        var b2 = new ScreenBuffer(new TerminalSize(80, 1));
+        down.renderFrame(new TextGraphics(b2), new TerminalSize(80, 1));
+        assertEquals(AnsiColor.BLUE, b2.getCell(0, 0).fg());
+        assertEquals(AnsiColor.BRIGHT_RED, b2.getCell(5, 0).fg(), "price must be red when down");
     }
 }

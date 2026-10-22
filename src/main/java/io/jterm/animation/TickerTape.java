@@ -151,8 +151,8 @@ public class TickerTape implements AnimatedBackground {
             refreshData();
         }
 
-        // Background.
-        TextCell bg = new TextCell(' ', AnsiColor.BLACK, AnsiColor.BLACK);
+        // Background. CNBC palette: white bar.
+        TextCell bg = new TextCell(' ', AnsiColor.WHITE, AnsiColor.WHITE);
         graphics.fillRectangle(0, 0, size.columns(), size.rows(), bg);
 
         if (items == null || items.isEmpty()) {
@@ -180,18 +180,18 @@ public class TickerTape implements AnimatedBackground {
             }
             TickerItem item = ordered.get(idx);
             String rendered = item.renderString();
-            // which cells of this item remain
-            int itemStartInWindow = col - 0;         // item starts at current col
-            // for idx==0 the front item may be partially consumed:
+            int symLen = item.symbol().length();
+            AnsiColor signColor = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
             int startChar = (idx == 0) ? Math.min(cellsIntoFront, rendered.length()) : 0;
             for (int k = startChar; k < rendered.length() && col < paintCols; k++, col++) {
                 char ch = rendered.charAt(k);
-                AnsiColor fg = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
-                graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.BLACK, SGR.BOLD));
+                // CNBC palette: BLUE symbol, GREEN/RED price+change (by sign)
+                AnsiColor fg = (k < symLen) ? AnsiColor.BLUE : signColor;
+                graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.WHITE, SGR.BOLD));
             }
             // separator between items
             for (int k = 0; k < SEPARATOR.length() && col < paintCols; k++, col++) {
-                graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BRIGHT_WHITE, AnsiColor.BLACK, SGR.BOLD));
+                graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BLUE, AnsiColor.WHITE, SGR.BOLD));
             }
             idx++;
         }
@@ -207,13 +207,15 @@ public class TickerTape implements AnimatedBackground {
             while (col < paintCols && guard++ < 64) {
                 for (TickerItem item : ordered) {
                     String rendered = item.renderString();
+                    int symLen2 = item.symbol().length();
+                    AnsiColor sign = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
                     for (int k = 0; k < rendered.length() && col < paintCols; k++, col++) {
                         char ch = rendered.charAt(k);
-                        AnsiColor fg = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
-                        graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.BLACK, SGR.BOLD));
+                        AnsiColor fg = (k < symLen2) ? AnsiColor.BLUE : sign;
+                        graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.WHITE, SGR.BOLD));
                     }
                     for (int k = 0; k < SEPARATOR.length() && col < paintCols; k++, col++) {
-                        graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BRIGHT_WHITE, AnsiColor.BLACK, SGR.BOLD));
+                        graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BLUE, AnsiColor.WHITE, SGR.BOLD));
                     }
                 }
             }

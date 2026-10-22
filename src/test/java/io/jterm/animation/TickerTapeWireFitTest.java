@@ -242,4 +242,109 @@ class TickerTapeWireFitTest {
         assertEquals(firstAB, a4 < m4,
                 "reversed supplier order must NOT flip the tape (order is sticky, price-only refresh)");
     }
+
+    @Test
+    @DisplayName("streaming arrivals insert without reshuffling previously-seen symbols")
+    void streamingArrivalsPreserveCycleOrder() {
+        java.util.LinkedHashMap<String, java.util.List<TickerTape.TickerItem>> stages = new java.util.LinkedHashMap<>();
+        stages.put("AAPL", List.of(new TickerTape.TickerItem("AAPL", 100.0, 90.0)));
+        stages.put("MSFT", List.of(
+                new TickerTape.TickerItem("AAPL", 100.0, 90.0),
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0)));
+        stages.put("GOOG", List.of(
+                new TickerTape.TickerItem("AAPL", 100.0, 90.0),
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0),
+                new TickerTape.TickerItem("GOOG", 300.0, 290.0)));
+        stages.put("NVDA", List.of(
+                new TickerTape.TickerItem("AAPL", 100.0, 90.0),
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0),
+                new TickerTape.TickerItem("GOOG", 300.0, 290.0),
+                new TickerTape.TickerItem("NVDA", 400.0, 390.0)));
+        var supplier = new java.util.concurrent.atomic.AtomicReference<>(stages.values().iterator().next());
+        var tape = new TickerTape(new TerminalSize(80, 1), supplier::get);
+        tape.setDemoFallback(false);
+        tape.setShuffleSeed(3); // deterministic first cycle
+        var seenOrder = new java.util.ArrayList<String>();   // cycle order as first rendered
+        for (var stage : stages.values()) {
+            supplier.set(stage);
+            tape.refreshData();
+            var buffer = new ScreenBuffer(new TerminalSize(80, 1));
+            tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+            String row = rowText(buffer, 0);
+            // harvest the cycle positions of previously-seen symbols
+            for (String sym : seenOrder) {
+                int here = row.indexOf(sym);
+                assertTrue(here >= 0, sym + " vanished after an arrival");
+            }
+            // relative order among seen symbols must hold: build actual seq of seen syms by position
+            var pos = new java.util.TreeMap<Integer, String>();
+            for (String sym : seenOrder) pos.put(row.indexOf(sym), sym);
+            var seq = new java.util.ArrayList<>(pos.values());
+            var sorted = new java.util.ArrayList<>(seq);
+            java.util.Collections.sort(seq);
+            // build expected = previous relative order mapped into THIS row: compare pairwise inversions
+            // simpler: the ORDER of seen symbols in this row (by position) must equal a rotation?? cycle may wrap — compare cyclic order
+            if (seq.size() >= 2) {
+                // cyclic comparison against last snapshot order stored in seenOrder
+                var cur = orderOf(seenOrder, row);
+                assertNotNull(cur);
+                assertEquals(seenOrder, cur, "cycle order of seen symbols must not change on arrival: " + seenOrder + " vs " + cur);
+            }
+            // add the newly-visible symbol to seenOrder in ITS current position
+            String rowFinal = row;
+            for (String sym : stages.keySet()) {
+                if (!seenOrder.contains(sym) && rowFinal.indexOf(sym) >= 0 && seenOrder.containsAll(seenBefore(stages, sym))) {
+                    var cur2 = orderOf(seenOrder, rowFinal);
+                    // insert new sym cyclically
+                    // find index to insert: after the symbol that precedes it in the cycle
+                    java.util.List<String> cyc = new java.util.ArrayList<>(cur2);
+                    int idx = cyc.size();
+                    for (int i = 0; i < cyc.size(); i++) {
+                        // find which seen symbol comes right before the new one cyclically
+                        String nxt = sym;
+                        int p = rowFinal.indexOf(sym);
+                        // preceding seen symbol = max position < p
+                        int best = -1;
+                        for (String s3 : cyc) {
+                            int sp = rowFinal.indexOf(s3);
+                            if (sp >= 0 && sp < p) best = Math.max(best, sp);
+                        }
+                        if (best < 0) { idx = 0; }
+                        else { idx = cyc.indexOf(symByPos(rowFinal, best)) + 1; }
+                        break;
+                    }
+                    idx = Math.min(idx, cyc.size());
+                    cyc.add(idx, sym);
+                    seenOrder.clear();
+                    seenOrder.addAll(cyc);
+                }
+            }
+        }
+        assertEquals(stages.size(), seenOrder.size(), "all symbols must appear exactly once in the cycle");
+    }
+
+    private String symByPos(String row, int pos) {
+        for (String sym : new String[]{"AAPL", "MSFT", "GOOG", "NVDA"}) {
+            if (row.indexOf(sym) == pos) return sym;
+        }
+        return null;
+    }
+    private java.util.List<String> seenBefore(java.util.LinkedHashMap<String, ?> stages, String sym) {
+        var out = new java.util.ArrayList<String>();
+        for (String k : stages.keySet()) {
+            if (k.equals(sym)) break;
+            out.add(k);
+        }
+        return out;
+    }
+    /** cyclic order of seenOrder as it appears in row (handles wrap) */
+    private java.util.List<String> orderOf(java.util.List<String> seen, String row) {
+        var pos = new java.util.TreeMap<Integer, String>();
+        for (String sym : seen) {
+            int p = row.indexOf(sym);
+            if (p < 0) return null;
+            pos.put(p, sym);
+        }
+        return new java.util.ArrayList<>(pos.values());
+    }
 }

@@ -51,9 +51,13 @@ public class TickerTape implements AnimatedBackground {
         // force re-derivation with the new seed, bypassing the sticky-subset
         // check: the ordered list must come from THIS seed alone
         if (items != null && !items.isEmpty()) {
+            orderSymbols.clear();
             List<TickerItem> copy = new java.util.ArrayList<>(items);
             java.util.Random rnd = seed >= 0 ? new java.util.Random(seed) : orderRandom;
             java.util.Collections.shuffle(copy, rnd);
+            for (TickerItem it : copy) {
+                orderSymbols.add(it.symbol());
+            }
             orderedItems = List.copyOf(copy);
             java.util.TreeSet<String> syms = new java.util.TreeSet<>();
             for (TickerItem it : orderedItems) {
@@ -212,37 +216,60 @@ public class TickerTape implements AnimatedBackground {
         }
     }
 
-    /** Re-derives the cached scroll order for the given item set. */
+    /** Symbol cycle order, kept INCREMENTALLY: arrivals insert, nothing reshuffles. */
+    private final java.util.ArrayList<String> orderSymbols = new java.util.ArrayList<>();
+
+    /**
+     * Maintains the cached scroll order for the given item set:
+     * unknown symbols INSERT at random positions; previously-seen symbols
+     * KEEP their cycle order exactly (a streaming universe — quotes landing
+     * one at a time — must never swap the visible set, Joe 2026-10-25).
+     * Prices refresh in place; symbols gone from the supplier fall out.
+     */
     private void regenerateOrder(List<TickerItem> fresh) {
         if (fresh == null) {
             orderedItems = List.of();
+            orderSymbols.clear();
             lastOrderSignature = -1;
             return;
         }
-        // signature is ORDER-INSENSITIVE over the symbol set: a partial
-        // refresh (quotes still streaming in) must not reshuffle the tape —
-        // only a genuinely NEW symbol set does.
-        java.util.TreeSet<String> symbols = new java.util.TreeSet<>();
+        java.util.Map<String, TickerItem> bySym = new java.util.LinkedHashMap<>();
         for (TickerItem it : fresh) {
-            symbols.add(it.symbol());
-        }
-        java.util.TreeSet<String> known = new java.util.TreeSet<>();
-        for (TickerItem it : orderedItems) {
-            known.add(it.symbol());
-        }
-        if (known.containsAll(symbols) && known.size() >= symbols.size()) {
-            return; // subset/same of the known order — keep it sticky
-        }
-        int signature = symbols.hashCode();
-        List<TickerItem> copy = new java.util.ArrayList<>(fresh);
-        if (orderInitialized && signature == lastOrderSignature && orderedItems.size() == copy.size()) {
-            return; // same set — keep the sticky order
+            bySym.put(it.symbol(), it);
         }
         java.util.Random rnd = shuffleSeed >= 0 ? new java.util.Random(shuffleSeed) : orderRandom;
-        java.util.Collections.shuffle(copy, rnd);
-        orderedItems = List.copyOf(copy);
-        lastOrderSignature = signature;
-        orderInitialized = true;
+        if (!orderInitialized) {
+            orderSymbols.clear();
+            List<TickerItem> copy = new java.util.ArrayList<>(fresh);
+            java.util.Collections.shuffle(copy, rnd);
+            for (TickerItem it : copy) {
+                orderSymbols.add(it.symbol());
+            }
+            orderInitialized = true;
+        } else {
+            // insert NEW symbols at random positions; keep all others fixed
+            java.util.List<String> newSyms = new java.util.ArrayList<>();
+            for (String sym : bySym.keySet()) {
+                if (!orderSymbols.contains(sym)) {
+                    newSyms.add(sym);
+                }
+            }
+            for (String sym : newSyms) {
+                orderSymbols.add(rnd.nextInt(orderSymbols.size() + 1), sym);
+            }
+            // drop symbols the supplier no longer provides
+            orderSymbols.removeIf(sym -> !bySym.containsKey(sym));
+        }
+        List<TickerItem> ordered = new java.util.ArrayList<>();
+        for (String sym : orderSymbols) {
+            TickerItem it = bySym.get(sym);
+            if (it != null) {
+                ordered.add(it);
+            }
+        }
+        orderedItems = List.copyOf(ordered);
+        java.util.TreeSet<String> syms = new java.util.TreeSet<>(orderSymbols);
+        lastOrderSignature = syms.hashCode();
     }
 
     /** Full cycle width for the given items (" + SEPARATOR " between rendered items). */

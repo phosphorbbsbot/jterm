@@ -32,7 +32,15 @@ public class AnimationTimer {
             long frameNanos = 1_000_000_000L / targetFps;
             while (running) {
                 long start = System.nanoTime();
-                frameCallback.run();
+                // FAULT-ISOLATION LAW (2026-10-26): a single throwing callback
+                // used to kill this thread silently — the tape froze mid-scroll
+                // while everything looked "running". Log and keep animating.
+                try {
+                    frameCallback.run();
+                } catch (RuntimeException e) {
+                    java.util.logging.Logger.getLogger(AnimationTimer.class.getName())
+                            .log(java.util.logging.Level.WARNING, "animation frame fault", e);
+                }
                 long elapsed = System.nanoTime() - start;
                 long sleep = frameNanos - elapsed;
                 if (sleep > 0) {

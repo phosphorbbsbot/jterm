@@ -454,4 +454,30 @@ class TickerTapeWireFitTest {
         assertFalse(row.contains("189.52") || row.contains("875.28") || row.contains("141.80"),
                 "demo residue must NOT render next to the real quote: [" + row + "]");
     }
+
+    @Test
+    @DisplayName("animation clock survives throwing callbacks (fault isolation)")
+    void clockSurvivesThrowingCallback() throws Exception {
+        var hits = new java.util.concurrent.atomic.AtomicInteger();
+        var boom = new java.util.concurrent.atomic.AtomicBoolean(false);
+        // build directly: AnimationTimer with a callback that throws twice
+        var t = new io.jterm.animation.AnimationTimer(50, () -> {
+            if (boom.compareAndSet(false, true)) {
+                throw new IllegalStateException("boom");
+            }
+            hits.incrementAndGet();
+        });
+        t.start();
+        try {
+            int spins = 0;
+            while (hits.get() == 0 && spins++ < 200) {
+                Thread.sleep(20);
+            }
+            assertTrue(hits.get() >= 1, "clock must keep ticking after a throwing frame (got " + hits.get() + ")");
+            assertTrue(t.isRunning(), "timer must still be running");
+        } finally {
+            t.stop();
+        }
+    }
+
 }

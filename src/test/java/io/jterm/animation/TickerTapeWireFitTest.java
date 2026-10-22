@@ -21,6 +21,7 @@ class TickerTapeWireFitTest {
     static final class T {
         private long now = System.nanoTime();
         long tick() { now += 125_000_000L; return now; }
+        long jumpSeconds(double seconds) { now += (long) (seconds * 1_000_000_000L); return now; }
     }
     private final T T = new T();
 
@@ -47,6 +48,33 @@ class TickerTapeWireFitTest {
             assertEquals(" ", cell.character(),
                     "column 79 painted after " + scroll + " scrolls — would wrap on real terminals");
         }
+    }
+
+    @Test
+    @DisplayName("a stall credits one beat, never the backlog (no catch-up jumps)")
+    void stallDiscardsBacklog() {
+        var tape = liveTape();
+        tape.setShuffleSeed(7);
+        tape.setScrollSpeed(0.5); // 4 cells/sec at 8fps like the hub bar
+        // steady state: a few normal slots
+        for (int i = 0; i < 8; i++) {
+            tape.tick(T.tick());
+        }
+        var before = tape.getScrollOffset();
+        // THE STALL: 10 seconds of nothing (nap, GC, sleep) — synthetic jump
+        long stalled = T.jumpSeconds(10);
+        tape.tick(stalled);
+        // the very next render must show ~1 cell of motion (0.25s credit),
+        // NOT the 40-cell backlog and NOT even the old 4-cell cap.
+        int after = tape.getScrollOffset();
+        int moved = after - before;
+        assertTrue(moved >= 0 && moved <= 2,
+                "stall moved " + moved + " cells — backlog discharged as a jump");
+        // and the next steady slots continue at normal cadence
+        tape.tick(T.tick());
+        int resumed = tape.getScrollOffset() - after;
+        assertTrue(resumed >= 0 && resumed <= 2,
+                "resume moved " + resumed + " cells — still smearing backlog");
     }
 
     @Test

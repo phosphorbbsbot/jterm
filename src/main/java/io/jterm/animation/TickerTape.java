@@ -45,7 +45,11 @@ public class TickerTape implements AnimatedBackground {
     private volatile boolean orderInitialized;
     private long shuffleSeed = -1;
     private long lastTickNanos;
-    private static final double MAX_CATCHUP_CELLS = 4.0;
+    private static final double MAX_CATCHUP_CELLS = 4.0; // retained: belt & braces
+    /** Elapsed gaps longer than this are stalls — credit not accumulated. */
+    private static final long MAX_CREDITED_ELAPSED_NANOS = 1_000_000_000L;
+    /** Credit handed to a stalled tick: one beat of motion, not the backlog. */
+    private static final long RESUME_CREDIT_NANOS = 250_000_000L;
 
     /** @param seed non-negative long to pin the shuffle (deterministic order); -1 = random */
     public void setShuffleSeed(long seed) {
@@ -356,11 +360,27 @@ public class TickerTape implements AnimatedBackground {
         if (lastTickNanos == 0) {
             lastTickNanos = now2;
         }
-        double elapsedCells = (now2 - lastTickNanos) / 1_000_000_000.0 * scrollSpeed * TARGET_FPS;
+        // BACKLOG-DISCARD LAW (Joe 2026-10-26: "catches up in one big move"):
+        // a stall is followed by a burst of catch-up reads as a JUMP. Cap the
+        // ELAPSED time credited, not just per-tick cells: a >1s gap between
+        // ticks is credited as 0.25s — the tape resumes from where it froze
+        // plus a beat of motion, and the accumulated gap is DISCARDED, never
+        // discharged (the old 4-cells/tick cap smeared a 5s backlog across
+        // several fast ticks = the visible catch-up move).
+        // BACKLOG-DISCARD LAW (Joe 2026-10-26 "catches up in one big move"):
+        // a stall is followed by a burst of catch-up reads as a JUMP. Cap the
+        // ELAPSED time credited, not just per-tick cells: a >1s gap between
+        // ticks is credited as 0.25s — the tape resumes from where it froze
+        // plus a beat of motion, and the accumulated gap is DISCARDED, never
+        // discharged (the old 4-cells/tick cap smeared a 5s backlog across
+        // several fast ticks = the visible catch-up move). RED evidence:
+        // old code moved 4 cells on the first post-stall tick (law failure).
+        long elapsed = now2 - lastTickNanos;
         lastTickNanos = now2;
-        if (elapsedCells > MAX_CATCHUP_CELLS) {
-            elapsedCells = MAX_CATCHUP_CELLS; // stalled ⇒ don't teleport
+        if (elapsed > MAX_CREDITED_ELAPSED_NANOS) {
+            elapsed = RESUME_CREDIT_NANOS;
         }
+        double elapsedCells = elapsed / 1_000_000_000.0 * scrollSpeed * TARGET_FPS;
         scrollCarry += Math.max(0.0, elapsedCells);
         int advance = (int) Math.floor(scrollCarry);
         scrollCarry -= advance;

@@ -331,11 +331,21 @@ public class TickerTape implements AnimatedBackground {
             // QUEUE LAW (Joe): new/returning symbols join at the BACK of the
             // queue — they enter the window only after the current cycle
             // scrolls past, never popping into an established slot.
+            // STREAMING-ORDER LAW (Joe 2026-10-22 "randomize the ticker"):
+            // join order must be RANDOM, not supplier order — a growing
+            // universe (quotes streaming in, positions added) would
+            // otherwise append an alphabetical tail after the shuffled
+            // prefix and the cycle would read sorted again.
+            java.util.List<String> arrivals = new java.util.ArrayList<>();
             for (String sym : bySym.keySet()) {
                 if (!orderSymbols.contains(sym)) {
-                    orderSymbols.add(sym);
+                    arrivals.add(sym);
                 }
             }
+            if (arrivals.size() > 1) {
+                java.util.Collections.shuffle(arrivals, rnd);
+            }
+            orderSymbols.addAll(arrivals);
             // symbols the supplier dropped KEEP rendering with their last
             // known data until they scroll off (queue exit) — the window
             // must never tear when a quote flaps. Track departures.
@@ -369,6 +379,13 @@ public class TickerTape implements AnimatedBackground {
             present.add(it.symbol());
         }
         currentSupplierSymbols = java.util.Set.copyOf(present);
+    }
+
+    /** Test hook: the current symbol cycle order (package-private, laws only). */
+    java.util.List<String> cycleOrderForTests() {
+        synchronized (stateLock) {
+            return new java.util.ArrayList<>(orderSymbols);
+        }
     }
 
     /** Full cycle width for the given items (" + SEPARATOR " between rendered items). */

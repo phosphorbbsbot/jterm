@@ -347,4 +347,96 @@ class TickerTapeWireFitTest {
         }
         return new java.util.ArrayList<>(pos.values());
     }
+
+    @Test
+    @DisplayName("queue law: totalWidth changes (quote flaps, arrivals) must NOT shift the visible window; items rotate FIFO")
+    void queueLawWindowStableWhenUniverseChanges() {
+        var supplier = new java.util.concurrent.atomic.AtomicReference<>(List.of(
+                new TickerTape.TickerItem("AAPL", 100.0, 90.0),
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0),
+                new TickerTape.TickerItem("GOOG", 300.0, 290.0)));
+        var tape = new TickerTape(new TerminalSize(80, 1), supplier::get);
+        tape.setDemoFallback(false);
+        tape.setShuffleSeed(9);
+        var buffer = new ScreenBuffer(new TerminalSize(80, 1));
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        // scroll partway
+        for (int i = 0; i < 6; i++) tape.tick(System.nanoTime());
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String before = rowText(buffer, 0);
+        // UNIVERSE MUTATES: a quote flaps (symbol briefly missing from supplier)
+        supplier.set(List.of(
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0),
+                new TickerTape.TickerItem("GOOG", 300.0, 290.0)));
+        tape.refreshData();
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        String during = rowText(buffer, 0);
+        // QUEUE LAW: the window must CONTINUE the same sequence (no jump, no
+        // tear): the tail cells the window opened with must still open the
+        // window, and any fully-visible item in BEFORE must remain visible at
+        // the same window column during (unless it scrolled past).
+        assertTrue(before.length() > 0 && during.length() > 0);
+        // find a needle fully inside the window in BOTH frames (pick MSFT):
+        int bMSFT = before.indexOf("MSFT");
+        int dMSFT = during.indexOf("MSFT");
+        assertTrue(bMSFT >= 0 && dMSFT >= 0, "MSFT must stay visible across the flap: before=[" + before + "] during=[" + during + "]");
+        int delta = dMSFT - bMSFT;
+        assertTrue(delta == 0,
+                "universe mutation must not shift the window (expected MSFT at col " + bMSFT + ", got " + dMSFT + ")");
+        // symbol fully DEPARTS: runs many ticks so it queue-exits, then returns — must re-enter at the BACK
+        var remaining = List.of(
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0),
+                new TickerTape.TickerItem("GOOG", 300.0, 290.0));
+        supplier.set(remaining);
+        tape.refreshData();
+        boolean sawAAPLgone = false;
+        for (int i = 0; i < 300; i++) {
+            tape.tick(System.nanoTime());
+            tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+            if (!rowText(buffer, 0).contains("AAPL")) {
+                sawAAPLgone = true; // exited the window
+                break;
+            }
+        }
+        assertTrue(sawAAPLgone, "departed symbol must scroll out of the window");
+        for (int i = 0; i < 200 && !rowText(buffer, 0).contains("AAPL"); i++) {
+            tape.tick(System.nanoTime());
+            tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+        }
+        // NOW it returns from the supplier: must append at the BACK of the queue
+        supplier.set(List.of(
+                new TickerTape.TickerItem("AAPL", 100.0, 90.0),
+                new TickerTape.TickerItem("MSFT", 200.0, 190.0),
+                new TickerTape.TickerItem("GOOG", 300.0, 290.0)));
+        tape.refreshData();
+        tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1)); // repaint BEFORE reading (rowText reads the buffer, not live state)
+        // AAPL must sit at the BACK of the queue, not its old slot: verify by
+        // rendering the full cycle — AAPL renders after both existing items
+        String row0 = rowText(buffer, 0);
+        int a = row0.indexOf("AAPL");
+        int m = row0.indexOf("MSFT");
+        // GOOG is partially consumed at the window head (its head scrolled
+        // past), so use MSFT (fully visible) as the incumbent anchor: the
+        // returned AAPL must render AFTER it, before any wrapped repeat.
+        assertTrue(a > m && m >= 0 && a >= 0,
+                "returned symbol must render at the BACK of the queue (after the incumbents), got [" + row0 + "]");
+        String firstCycle = row0.substring(0, row0.indexOf("AAPL"));
+        assertTrue(firstCycle.contains("MSFT"),
+                "the cycle must show incumbents before the returned symbol: [" + row0 + "]");
+        java.util.LinkedHashSet<String> seenOrder = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < 400 && seenOrder.size() < 3; i++) {
+            tape.tick(System.nanoTime());
+            tape.renderFrame(new TextGraphics(buffer), new TerminalSize(80, 1));
+            String row = rowText(buffer, 0);
+            for (String sym : new String[]{"MSFT", "GOOG", "AAPL"}) {
+                if (row.contains(sym) && !seenOrder.contains(sym)) {
+                    seenOrder.add(sym);
+                }
+            }
+        }
+        var list = new java.util.ArrayList<>(seenOrder);
+        assertEquals(3, list.size(), "all three must cycle: " + list);
+        assertEquals("AAPL", list.get(2),
+                "returning symbol must re-enter at the BACK of the queue (the two incumbents lead, any phase), got " + list);
+    }
 }

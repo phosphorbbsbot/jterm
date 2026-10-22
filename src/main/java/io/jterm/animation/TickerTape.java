@@ -105,7 +105,9 @@ public class TickerTape implements AnimatedBackground {
 
     private volatile boolean running;
     private volatile TerminalSize lastSize;
-    private volatile int scrollOffset;
+    private volatile int scrollOffset;          // window phase within the CURRENT cycle (tests)
+    private volatile long absoluteOffsetCells;  // Joe's queue law: cells consumed since open — never % totalWidth
+    private volatile List<TickerItem> lastCycleItems = List.of(); // the cycle whose widths anchor absoluteOffset
     private volatile List<TickerItem> items;
     private volatile long lastRefreshMs;
 
@@ -159,61 +161,70 @@ public class TickerTape implements AnimatedBackground {
 
         int cols = size.columns();
         int row = size.rows() - 1;
+        // REAL TERMINAL LAW: writing into the last column of the bottom row
+        // auto-wraps — the tape never paints column cols-1.
+        int paintCols = Math.min(cols - 1, Math.max(0, cols - 1));
 
-        StringBuilder builder = new StringBuilder();
+        // QUEUE RENDER (Joe): items render in FIFO order from the queue
+        // front; `absoluteOffsetCells` counts cells consumed since open and
+        // anchors the window to the FRONT item — universe changes (arrivals,
+        // flaps, removals) never shift visible content; when an item scrolls
+        // off the left, tick() rotates it to the back.
+        int cellsIntoFront = (int) Math.min(absoluteOffsetCells, Integer.MAX_VALUE);
+        int col = 0;
         List<TickerItem> ordered = orderedItems.isEmpty() ? items : orderedItems;
-        for (TickerItem item : ordered) {
-            if (!builder.isEmpty()) {
-                builder.append(SEPARATOR);
+        int idx = 0;
+        while (col < paintCols) {
+            if (idx >= ordered.size()) {
+                break;
             }
-            builder.append(item.renderString());
+            TickerItem item = ordered.get(idx);
+            String rendered = item.renderString();
+            // which cells of this item remain
+            int itemStartInWindow = col - 0;         // item starts at current col
+            // for idx==0 the front item may be partially consumed:
+            int startChar = (idx == 0) ? Math.min(cellsIntoFront, rendered.length()) : 0;
+            for (int k = startChar; k < rendered.length() && col < paintCols; k++, col++) {
+                char ch = rendered.charAt(k);
+                AnsiColor fg = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
+                graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.BLACK, SGR.BOLD));
+            }
+            // separator between items
+            for (int k = 0; k < SEPARATOR.length() && col < paintCols; k++, col++) {
+                graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BRIGHT_WHITE, AnsiColor.BLACK, SGR.BOLD));
+            }
+            idx++;
         }
-        String text = builder.toString();
-        if (text.isEmpty()) {
-            return;
-        }
-
-        String padded = text + SEPARATOR;
-        int totalWidth = padded.length();
-        if (totalWidth <= 0) {
-            return;
-        }
-
-        // Advance is driven by tick() only — hosts repaint independently of
-        // the animation clock, and renderFrame must be idempotent per offset
-        // (blitting a cached offset twice must produce the same row).
-
-        // REAL TERMINAL LAW: writing a character into the last column of the
-        // bottom row makes real terminals auto-wrap to the next line. The
-        // tape lives on the bottom row, so it must never paint column
-        // cols-1 — stop one column short.
-        int paintCols = Math.max(0, cols - 1);
-
-        int startIdx = scrollOffset;
-        for (int col = 0; col < paintCols; col++) {
-            int idx = (startIdx + col) % totalWidth;
-            char ch = padded.charAt(idx);
-            int effectiveCol = col;
-
-            // Determine which item this character belongs to so we can color it.
-            AnsiColor fg = AnsiColor.BRIGHT_WHITE;
-            SGR sgr = SGR.BOLD;
-
-            int itemStart = 0;
-            for (TickerItem item : ordered) {
-                String rendered = item.renderString();
-                int itemEnd = itemStart + rendered.length();
-                if (idx >= itemStart && idx < itemEnd) {
-                    fg = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
-                    break;
+        // cycle exhausted mid-window: wrap and repeat (marquee) — but only if
+        // the whole cycle is narrower than the window
+        if (ordered.size() > 0) {
+            long cycleCells = 0;
+            for (TickerItem it : ordered) {
+                cycleCells += it.renderString().length() + SEPARATOR.length();
+            }
+            // compute remaining cells to fill and loop the cycle from the front
+            int guard = 0;
+            while (col < paintCols && guard++ < 64) {
+                for (TickerItem item : ordered) {
+                    String rendered = item.renderString();
+                    for (int k = 0; k < rendered.length() && col < paintCols; k++, col++) {
+                        char ch = rendered.charAt(k);
+                        AnsiColor fg = item.change() >= 0.0 ? AnsiColor.BRIGHT_GREEN : AnsiColor.BRIGHT_RED;
+                        graphics.setCell(col, row, new TextCell(ch, fg, AnsiColor.BLACK, SGR.BOLD));
+                    }
+                    for (int k = 0; k < SEPARATOR.length() && col < paintCols; k++, col++) {
+                        graphics.setCell(col, row, new TextCell(SEPARATOR.charAt(k), AnsiColor.BRIGHT_WHITE, AnsiColor.BLACK, SGR.BOLD));
+                    }
                 }
-                // Skip separator for the next item.
-                itemStart = itemEnd + SEPARATOR.length();
             }
-            // Separator characters keep bright white foreground.
-
-            graphics.setCell(effectiveCol, row, new TextCell(ch, fg, AnsiColor.BLACK, sgr));
         }
+    }
+
+    /** Last known data per symbol — departed quotes keep rendering until they queue-exit. */
+    private final java.util.HashMap<String, TickerItem> everSeen = new java.util.HashMap<>();
+
+    private TickerItem lastDataFor(String sym) {
+        return everSeen.get(sym);
     }
 
     /** Symbol cycle order, kept INCREMENTALLY: arrivals insert, nothing reshuffles. */
@@ -236,6 +247,7 @@ public class TickerTape implements AnimatedBackground {
         java.util.Map<String, TickerItem> bySym = new java.util.LinkedHashMap<>();
         for (TickerItem it : fresh) {
             bySym.put(it.symbol(), it);
+            everSeen.put(it.symbol(), it);
         }
         java.util.Random rnd = shuffleSeed >= 0 ? new java.util.Random(shuffleSeed) : orderRandom;
         if (!orderInitialized) {
@@ -247,17 +259,26 @@ public class TickerTape implements AnimatedBackground {
             }
             orderInitialized = true;
         } else {
-            // insert NEW symbols at random positions; keep all others fixed
-            java.util.List<String> newSyms = new java.util.ArrayList<>();
+            // QUEUE LAW (Joe): new/returning symbols join at the BACK of the
+            // queue — they enter the window only after the current cycle
+            // scrolls past, never popping into an established slot.
             for (String sym : bySym.keySet()) {
                 if (!orderSymbols.contains(sym)) {
-                    newSyms.add(sym);
+                    orderSymbols.add(sym);
                 }
             }
-            for (String sym : newSyms) {
-                orderSymbols.add(rnd.nextInt(orderSymbols.size() + 1), sym);
+            // symbols the supplier dropped KEEP rendering with their last
+            // known data until they scroll off (queue exit) — the window
+            // must never tear when a quote flaps. Track departures.
+            for (java.util.Iterator<String> it2 = orderSymbols.iterator(); it2.hasNext();) {
+                String sym = it2.next();
+                if (!bySym.containsKey(sym)) {
+                    TickerItem stale = lastDataFor(sym);
+                    if (stale != null) {
+                        bySym.put(sym, stale); // keep painting it for now
+                    }
+                }
             }
-            // drop symbols the supplier no longer provides
             orderSymbols.removeIf(sym -> !bySym.containsKey(sym));
         }
         List<TickerItem> ordered = new java.util.ArrayList<>();
@@ -270,6 +291,13 @@ public class TickerTape implements AnimatedBackground {
         orderedItems = List.copyOf(ordered);
         java.util.TreeSet<String> syms = new java.util.TreeSet<>(orderSymbols);
         lastOrderSignature = syms.hashCode();
+        // supplier-present = genuinely in the latest supplier list — NOT the
+        // flap-kept stale items (those must drop at queue exit)
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (TickerItem it : fresh) {
+            present.add(it.symbol());
+        }
+        currentSupplierSymbols = java.util.Set.copyOf(present);
     }
 
     /** Full cycle width for the given items (" + SEPARATOR " between rendered items). */
@@ -295,18 +323,79 @@ public class TickerTape implements AnimatedBackground {
         if (System.currentTimeMillis() - lastRefreshMs >= REFRESH_INTERVAL_MS) {
             refreshData();
         }
-        List<TickerItem> current = items;
-        if (current == null || current.isEmpty()) {
+        List<TickerItem> cycle = orderedItems;
+        if (cycle == null || cycle.isEmpty()) {
             return;
         }
-        int totalWidth = paddedWidth(current);
-        if (totalWidth <= 0) {
+        // width of the CURRENT front item + separator, anchored from the
+        // cycle snapshot taken at the last rotation
+        long frontWidth = frontItemWidth();
+        if (frontWidth <= 0) {
             return;
         }
         scrollCarry += scrollSpeed;
         int advance = (int) Math.floor(scrollCarry);
         scrollCarry -= advance;
-        scrollOffset = (scrollOffset + advance) % totalWidth;
+        absoluteOffsetCells += advance;
+
+        // QUEUE ROTATION (Joe): the item at the front scrolls out; when its
+        // last cell plus separator has passed the left edge, it re-enters at
+        // the BACK and the window stays anchored — a universe that grows or
+        // flaps never shifts the visible content.
+        while (absoluteOffsetCells >= frontWidth) {
+            rotateFrontToBack();
+            absoluteOffsetCells -= frontWidth;
+            frontWidth = frontItemWidth();
+            if (frontWidth <= 0) {
+                break;
+            }
+        }
+        scrollOffset = (int) (absoluteOffsetCells % Math.max(1, frontItemWidth() + 1));
+        scrollOffset = (int) Math.min(scrollOffset, frontWidth);
+    }
+
+    /** Cell width of the item currently at the queue front (+ separator). */
+    private long frontItemWidth() {
+        List<TickerItem> cycle = orderedItems;
+        if (cycle == null || cycle.isEmpty()) {
+            return 0;
+        }
+        TickerItem front = cycle.get(0);
+        String rendered = front.renderString();
+        return rendered.length() + SEPARATOR.length();
+    }
+
+    /** Moves the front item to the back (FIFO), refreshing it from lastCycleItems data if supplied anew. */
+    private void rotateFrontToBack() {
+        List<TickerItem> cycle = orderedItems;
+        if (cycle == null || cycle.size() < 2) {
+            return;
+        }
+        TickerItem front = cycle.get(0);
+        List<TickerItem> rotated = new java.util.ArrayList<>(cycle.size());
+        for (int i = 1; i < cycle.size(); i++) {
+            rotated.add(cycle.get(i));
+        }
+        // if the front item's data was withdrawn (supplier no longer provides
+        // it — flapped quote), its queue exit is the natural drop point
+        if (!supplierHas(front.symbol())) {
+            orderSymbols.remove(front.symbol());
+            rotated.remove(front); // not re-adding
+        } else {
+            rotated.add(front);
+        }
+        orderedItems = List.copyOf(rotated);
+        orderSymbols.clear();
+        for (TickerItem it : rotated) {
+            orderSymbols.add(it.symbol());
+        }
+    }
+
+    /** Is this symbol in the CURRENT subscription/supplier set? (visible for rotation decisions) */
+    private volatile java.util.Set<String> currentSupplierSymbols = java.util.Set.of();
+
+    private boolean supplierHas(String sym) {
+        return currentSupplierSymbols.contains(sym);
     }
 
     @Override

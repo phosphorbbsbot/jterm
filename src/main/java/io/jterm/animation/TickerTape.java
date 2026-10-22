@@ -32,6 +32,29 @@ public class TickerTape implements AnimatedBackground {
     private double scrollSpeed = DEFAULT_SCROLL_SPEED_CELLS;
     private double scrollCarry;
 
+    /**
+     * Symbols scroll in SHUFFLED order (nothing adjacent alphabetizes by
+     * accident). The order is recomputed only when the item SET changes —
+     * mid-stream refreshes keep the existing sequence so the tape never
+     * visually jumps. Default seed derives from identity hash; hosts may
+     * pin a seed for deterministic renders (tests).
+     */
+    private final java.util.Random orderRandom = new java.util.Random();
+    private volatile java.util.List<TickerItem> orderedItems = List.of();
+    private volatile int lastOrderSignature = -1;
+    private volatile boolean orderInitialized;
+    private long shuffleSeed = -1;
+
+    /** @param seed non-negative long to pin the shuffle (deterministic order); -1 = random */
+    public void setShuffleSeed(long seed) {
+        this.shuffleSeed = seed;
+        // force re-derivation with the new seed (the sticky-signature check
+        // would otherwise keep the identity-seeded order)
+        orderInitialized = false;
+        lastOrderSignature = -1;
+        regenerateOrder(items);
+    }
+
     /** @param cellsPerFrame cells to advance per frame (e.g. 0.5 = half speed) */
     public void setScrollSpeed(double cellsPerFrame) {
         if (cellsPerFrame <= 0) {
@@ -125,7 +148,8 @@ public class TickerTape implements AnimatedBackground {
         int row = size.rows() - 1;
 
         StringBuilder builder = new StringBuilder();
-        for (TickerItem item : items) {
+        List<TickerItem> ordered = orderedItems.isEmpty() ? items : orderedItems;
+        for (TickerItem item : ordered) {
             if (!builder.isEmpty()) {
                 builder.append(SEPARATOR);
             }
@@ -163,7 +187,7 @@ public class TickerTape implements AnimatedBackground {
             SGR sgr = SGR.BOLD;
 
             int itemStart = 0;
-            for (TickerItem item : items) {
+            for (TickerItem item : ordered) {
                 String rendered = item.renderString();
                 int itemEnd = itemStart + rendered.length();
                 if (idx >= itemStart && idx < itemEnd) {
@@ -177,6 +201,30 @@ public class TickerTape implements AnimatedBackground {
 
             graphics.setCell(effectiveCol, row, new TextCell(ch, fg, AnsiColor.BLACK, sgr));
         }
+    }
+
+    /** Re-derives the cached scroll order for the given item set. */
+    private void regenerateOrder(List<TickerItem> fresh) {
+        if (fresh == null) {
+            orderedItems = List.of();
+            lastOrderSignature = -1;
+            return;
+        }
+        List<String> symbols = new java.util.ArrayList<>();
+        for (TickerItem it : fresh) {
+            symbols.add(it.symbol());
+        }
+        java.util.Collections.sort(symbols);
+        int signature = symbols.hashCode();
+        List<TickerItem> copy = new java.util.ArrayList<>(fresh);
+        if (orderInitialized && signature == lastOrderSignature && orderedItems.size() == copy.size()) {
+            return; // same set — keep the sticky order
+        }
+        java.util.Random rnd = shuffleSeed >= 0 ? new java.util.Random(shuffleSeed) : orderRandom;
+        java.util.Collections.shuffle(copy, rnd);
+        orderedItems = List.copyOf(copy);
+        lastOrderSignature = signature;
+        orderInitialized = true;
     }
 
     /** Full cycle width for the given items (" + SEPARATOR " between rendered items). */
@@ -305,6 +353,7 @@ public class TickerTape implements AnimatedBackground {
         if (this.items == null || this.items.isEmpty()) {
             this.items = demoFallback ? FALLBACK_ITEMS : null;
         }
+        regenerateOrder(this.items);
         lastRefreshMs = System.currentTimeMillis();
     }
 

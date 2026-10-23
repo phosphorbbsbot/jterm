@@ -7,7 +7,9 @@ import io.jterm.core.input.KeyType;
 import io.jterm.graphics.TextGraphics;
 import io.jterm.screen.ScreenBuffer;
 import io.jterm.style.AnsiColor;
+import java.util.EnumSet;
 import io.jterm.style.TextCell;
+import io.jterm.style.SGR;
 import io.jterm.style.Theme;
 import io.jterm.style.ThemeManager;
 import io.jterm.widget.model.DefaultListModel;
@@ -913,5 +915,59 @@ class ListBoxTest {
         });
         modelA.addElement("B");
         assertEquals(1, fired[0], "only the test listener should fire, not the detached ListBox");
+    }
+
+    @Test
+    void rowStyleProviderDimsUnselectedRows() {
+        // BBS law (Joe, 2026-10-23): bulletin-view author/time header lines are
+        // DIMMED so posts visually separate. Mirrors Table.setRowStyleProvider:
+        // selection styling always wins; colors stay theme-driven (only SGR mods
+        // consumed); null falls back to theme style.
+        var list = new ListBox<String>();
+        list.addItem("2026-10-23 10:00  joe");
+        list.addItem("body line of the post");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(30, 3));
+        list.setRowStyleProvider((ListBox.RowStyle) row -> row == 0
+                ? new TextCell(" ", AnsiColor.WHITE, AnsiColor.BLACK, EnumSet.of(SGR.DIM))
+                : null);
+        var buf = drawList(list, 30, 3);
+        // Row 0 selected = selection wins (NOT dim)
+        assertFalse(buf.getCell(0, 0).modifiers().contains(SGR.DIM),
+                "selected row must keep selection style (no dim)");
+        // Row 1 unselected + provider null => default (no dim)
+        assertFalse(buf.getCell(0, 1).modifiers().contains(SGR.DIM));
+        // Move selection to row 1: row 0 now unselected => DIM applies
+        list.setSelectedIndex(1);
+        buf = drawList(list, 30, 3);
+        assertTrue(buf.getCell(0, 0).modifiers().contains(SGR.DIM),
+                "unselected styled row must carry SGR.DIM");
+        assertFalse(buf.getCell(0, 1).modifiers().contains(SGR.DIM));
+    }
+
+    @Test
+    void nullRowStyleProviderClearsStyling() {
+        var list = new ListBox<String>();
+        list.addItem("A");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(5, 2));
+        list.setRowStyleProvider(null);
+        var buf = drawList(list, 5, 2);
+        assertTrue(buf.getCell(0, 0).is('A'));
+    }
+
+    @Test
+    void rowStyleProviderColorsStayThemeDriven() {
+        // Provider returns a colored cell; ListBox must IGNORE its fg/bg and
+        // keep theme colors (same law as Table's RowStyle).
+        var list = new ListBox<String>();
+        list.addItem("Apple");
+        list.addItem("Banana");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 3));
+        list.setSelectedIndex(1);
+        list.setRowStyleProvider((ListBox.RowStyle) row -> row == 0
+                ? new TextCell(' ', AnsiColor.RED, AnsiColor.GREEN)  // fg/bg ignored by law
+                : null);
+        var buf = drawList(list, 10, 3);
+        assertNotEquals(AnsiColor.GREEN, buf.getCell(0, 0).bg(), "provider bg must NOT leak; theme stays");
+        assertNotEquals(AnsiColor.RED, buf.getCell(0, 0).fg(), "provider fg must NOT leak; theme stays");
     }
 }

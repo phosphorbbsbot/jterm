@@ -29,6 +29,41 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
     private volatile int selectedIndex = 0;
     private volatile int scrollOffset = 0;
     private volatile Function<T, String> renderer = Object::toString;
+    private volatile RowStyle rowStyleProvider;
+
+    /**
+     * Per-row style override, mirroring {@link Table}'s RowStyle law: return a
+     * TextCell whose character/fg/bg are placeholder values — only its SGR
+     * modifiers are used (colors stay theme-driven). The selected row ignores
+     * the provider so selection styling always wins. Null falls back to the
+     * theme style.
+     */
+    public interface RowStyle {
+        /**
+         * Styles one list row.
+         *
+         * @param row the absolute model row index being rendered
+         * @return the styled cell (only SGR modifiers are consumed), or
+         *         {@code null} to fall back to the theme style entirely
+         */
+        io.jterm.style.TextCell apply(int row);
+    }
+
+    /**
+     * Installs a per-row style provider (e.g. dim bulletin-view author/time
+     * header lines) or clears it with {@code null}.
+     *
+     * @param provider per-row style source, or {@code null} to clear
+     */
+    public void setRowStyleProvider(RowStyle provider) {
+        this.rowStyleProvider = provider;
+        invalidate();
+    }
+
+    /** Returns the installed row-style provider, or {@code null} when none. */
+    public RowStyle getRowStyleProvider() {
+        return rowStyleProvider;
+    }
     private final List<Runnable> selectionListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile boolean autoScroll = false;
     private volatile boolean manualScroll = false;
@@ -314,9 +349,20 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
             }
             String text = renderer.apply(model.getElementAt(idx));
             boolean selected = idx == selectedIndex;
-            TextCell style = selected
-                ? new TextCell(' ', theme.selectionFg(), theme.selectionBg())
-                : new TextCell(' ', theme.foreground(), theme.background());
+            TextCell style;
+            if (selected) {
+                // Selection always wins over the row-style provider (same law
+                // as Table's RowStyle) — a provider like "dim header lines"
+                // never restyles the cursor row.
+                style = new TextCell(' ', theme.selectionFg(), theme.selectionBg());
+            } else if (rowStyleProvider != null) {
+                var custom = rowStyleProvider.apply(idx);
+                style = custom != null
+                    ? new TextCell(' ', theme.foreground(), theme.background(), custom.modifiers().toArray(new SGR[0]))
+                    : new TextCell(' ', theme.foreground(), theme.background());
+            } else {
+                style = new TextCell(' ', theme.foreground(), theme.background());
+            }
             graphics.fillRectangle(0, r, size.columns(), 1, style);
             graphics.drawString(0, r, TerminalTextUtils.truncate(text, size.columns()), style);
         }

@@ -29,6 +29,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class DataGrid<T> extends AbstractComponent implements GridListener {
 
     private GridModel<T> model;
+    /** @return the column definitions in render order (tests only) */
+    public List<GridColumn<T>> columnsForTest() {
+        return columns;
+    }
+
     private List<GridColumn<T>> columns;
     private volatile int selectedRow = 0;
     private volatile int scrollOffsetY = 0;

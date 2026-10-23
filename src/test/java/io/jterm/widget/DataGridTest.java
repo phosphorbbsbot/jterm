@@ -75,6 +75,19 @@ class DataGridTest {
     // ---- Tests -------------------------------------------------------------
 
     @Test
+    void columnsForTestReturnsColumnDefinitions() {
+        var columns = List.of(
+                GridColumn.text("Name", TestRow::name),
+                GridColumn.intCol("Age", TestRow::age),
+                GridColumn.doubleCol("Score", "%.2f", TestRow::score));
+        var grid = new DataGrid<TestRow>(columns);
+        assertEquals(3, grid.columnsForTest().size());
+        assertEquals("Name", grid.columnsForTest().get(0).header());
+        assertEquals("Age", grid.columnsForTest().get(1).header());
+        assertEquals("Score", grid.columnsForTest().get(2).header());
+    }
+
+    @Test
     void emptyModelRendersWithoutError() {
         var columns = List.of(GridColumn.text("Name", TestRow::name));
         var grid = new DataGrid<TestRow>(columns);

@@ -83,6 +83,42 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
     public RowStyle getRowStyleProvider() {
         return rowStyleProvider;
     }
+
+    private volatile RowSegments rowSegmentsProvider;
+
+    /**
+     * Per-row character-range styling on top of the row style (Joe, round 3:
+     * the author name inside a dimmed header line rendered in its own color).
+     * Segments index CHARACTERS of the rendered row string; the LAST matching
+     * segment wins (same law as {@code TextGraphics.drawStyledString}). The
+     * row-style provider remains the base outside segments; segments are
+     * IGNORED on the selected row (selection styling wins). A segment's
+     * DEFAULT bg resolves to the row's base background.
+     */
+    public interface RowSegments {
+        /**
+         * Segments for one rendered row.
+         *
+         * @param row the absolute model row index being rendered
+         * @return styled character ranges, or {@code null} when the row has none
+         */
+        java.util.List<io.jterm.style.StyledSegment> apply(int row);
+    }
+
+    /**
+     * Installs a per-row segment styler or clears it with {@code null}.
+     *
+     * @param provider per-row segment source, or {@code null} to clear
+     */
+    public void setRowSegments(RowSegments provider) {
+        this.rowSegmentsProvider = provider;
+        invalidate();
+    }
+
+    /** Returns the installed row-segments provider, or {@code null} when none. */
+    public RowSegments getRowSegments() {
+        return rowSegmentsProvider;
+    }
     private final List<Runnable> selectionListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile boolean autoScroll = false;
     private volatile boolean manualScroll = false;
@@ -384,7 +420,30 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
                 style = new TextCell(' ', theme.foreground(), theme.background());
             }
             graphics.fillRectangle(0, r, size.columns(), 1, style);
-            graphics.drawString(0, r, TerminalTextUtils.truncate(text, size.columns()), style);
+            String drawn = TerminalTextUtils.truncate(text, size.columns());
+            var segments = (!selected && rowSegmentsProvider != null) ? rowSegmentsProvider.apply(idx) : null;
+            if (segments == null || segments.isEmpty()) {
+                graphics.drawString(0, r, drawn, style);
+            } else {
+                // Segment law: LAST matching segment wins; outside segments the
+                // row-style base applies; segment DEFAULT bg resolves to the
+                // row's base bg (mirrors TextGraphics.drawStyledString).
+                final TextCell baseStyle = style;
+                graphics.drawStyledString(0, r, drawn, baseStyle, (charIdx, c, defStyle) -> {
+                    io.jterm.style.StyledSegment matched = null;
+                    for (io.jterm.style.StyledSegment seg : segments) {
+                        if (seg.contains(charIdx)) {
+                            matched = seg;
+                        }
+                    }
+                    if (matched == null) {
+                        return null;
+                    }
+                    return new TextCell(c, matched.fg(),
+                        matched.bg() == io.jterm.style.AnsiColor.DEFAULT ? defStyle.bg() : matched.bg(),
+                        matched.modifiers().toArray(new SGR[0]));
+                });
+            }
         }
     }
 

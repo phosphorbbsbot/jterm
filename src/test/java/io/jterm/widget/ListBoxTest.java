@@ -7,6 +7,7 @@ import io.jterm.core.input.KeyType;
 import io.jterm.graphics.TextGraphics;
 import io.jterm.screen.ScreenBuffer;
 import io.jterm.style.AnsiColor;
+import java.util.List;
 import java.util.EnumSet;
 import io.jterm.style.TextCell;
 import io.jterm.style.SGR;
@@ -991,6 +992,77 @@ class ListBoxTest {
         // Row 0 is selected → theme selection bg, NOT the provider color
         assertEquals(AnsiColor.WHITE, buf.getCell(0, 0).bg(), "selection bg must win over provider");
         assertFalse(buf.getCell(0, 0).fg() instanceof io.jterm.style.RgbColor, "selection fg must win over provider");
+    }
+
+    @Test
+    void rowSegmentsStyleAuthorSpan() {
+        // Round 3 (Joe): "author first, then time" + author in dimmed YELLOW.
+        // Law: setRowSegments(provider) styles character RANGES of the
+        // rendered row (last matching segment wins); the row-styler's base
+        // still applies outside segments; segments are IGNORED on the
+        // selected row (selection law).
+        var list = new ListBox<String>();
+        list.addItem("joe  2026-10-23 10:00");
+        list.addItem("body line");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(30, 3));
+        list.setSelectedIndex(1);
+        var yellow = new io.jterm.style.RgbColor(150, 130, 0);
+        list.setRowSegments(row -> row == 0
+                ? List.of(new io.jterm.style.StyledSegment(0, 3, yellow))
+                : null);
+        var buf = drawList(list, 30, 3);
+        // getCell(col, row) — author spans columns 0..2 on row 0
+        assertEquals(yellow, buf.getCell(0, 0).fg());
+        assertEquals(yellow, buf.getCell(1, 0).fg());
+        assertEquals(yellow, buf.getCell(2, 0).fg());
+        // space + timestamp keep the theme base (no RgbColor leak)
+        assertFalse(buf.getCell(4, 0).fg() instanceof io.jterm.style.RgbColor);
+        // segment DEFAULT bg resolves to the row's base bg
+        assertEquals(AnsiColor.BLACK, buf.getCell(0, 0).bg());
+    }
+
+    @Test
+    void rowSegmentsIgnoredOnSelectedRow() {
+        var list = new ListBox<String>();
+        list.addItem("abc");
+        list.addItem("def");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 3));
+        list.setRowSegments(row -> row == 0
+                ? List.of(new io.jterm.style.StyledSegment(0, 3, new io.jterm.style.RgbColor(150, 130, 0)))
+                : null);
+        var buf = drawList(list, 10, 3);
+        assertEquals(AnsiColor.WHITE, buf.getCell(0, 0).bg(), "selection wins over segments");
+        assertFalse(buf.getCell(0, 0).fg() instanceof io.jterm.style.RgbColor);
+    }
+
+    @Test
+    void rowSegmentsLastMatchingWins() {
+        // TextGraphics law: the LAST segment containing the index overrides.
+        var list = new ListBox<String>();
+        list.addItem("abcd");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 2));
+        list.setSelectedIndex(-1 + 1 == 0 ? 0 : 0); // row 0 selected? NO — keep row 0 unselected: select row... only one row. Use 2 items.
+        list.addItem("efgh");
+        list.setSelectedIndex(1);
+        list.setRowSegments(row -> row == 0
+                ? List.of(new io.jterm.style.StyledSegment(0, 4, new io.jterm.style.RgbColor(1, 2, 3)),
+                          new io.jterm.style.StyledSegment(1, 3, new io.jterm.style.RgbColor(9, 8, 7)))
+                : null);
+        var buf = drawList(list, 10, 2);
+        assertEquals(1, ((io.jterm.style.RgbColor) buf.getCell(0, 0).fg()).r());
+        assertEquals(9, ((io.jterm.style.RgbColor) buf.getCell(1, 0).fg()).r());
+        assertEquals(9, ((io.jterm.style.RgbColor) buf.getCell(2, 0).fg()).r());
+        assertEquals(1, ((io.jterm.style.RgbColor) buf.getCell(3, 0).fg()).r());
+    }
+
+    @Test
+    void nullRowSegmentsAreLegal() {
+        var list = new ListBox<String>();
+        list.addItem("A");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(5, 2));
+        list.setRowSegments(null);
+        var buf = drawList(list, 5, 2);
+        assertTrue(buf.getCell(0, 0).is('A'));
     }
 
     @Test

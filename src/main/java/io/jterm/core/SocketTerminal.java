@@ -608,16 +608,6 @@ public class SocketTerminal implements Terminal {
 
     /** Write raw bytes directly to the terminal output. Thread-safe with respect to output. */
     public synchronized void writeRaw(byte[] data) throws IOException {
-        // WRITE-LATENCY PROBE (Joe 2026-10-26: 1-1.5s freeze exactly at the
-        // left-edge symbol exit, keys responsive): if a write to the client
-        // takes >600ms, THE CLIENT stopped reading (TCP backpressure) or the
-        // socket stalled — log it with the payload size. Silent when healthy.
-        long t0 = System.nanoTime();
         out.write(data);
-        long ms = (System.nanoTime() - t0) / 1_000_000L;
-        if (ms > 600) {
-            java.util.logging.Logger.getLogger(SocketTerminal.class.getName())
-                    .warning("[WRITE-LATENCY] " + ms + "ms for " + data.length + "B");
-        }
     }
 }

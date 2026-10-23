@@ -21,16 +21,17 @@ import java.util.function.Supplier;
  */
 public class TickerTape implements AnimatedBackground {
 
-    // TAPE-OFFSET probe (see renderFrame)
-    private volatile long lastOffsetLogMs;
 
     /**
-     * Tape repaint ceiling. Advance is TIME-BASED (elapsed), so cutting fps
-     * halves the client's redraw work with identical motion. 8fps painted the
-     * full-width bar 8×/s — and on slower renderers (phosphor-ios relay,
-     * tmux) the ROTATION frame rewrites the entire bar row with its SGR runs,
-     * which Joe sees as a 1-1.5s freeze at every left-edge exit (2026-10-22).
-     * 4fps keeps the scroll perceptibly smooth while halving that cost.
+     * Tape repaint ceiling. Advance is TIME-BASED (elapsed), so the cadence
+     * only changes how often the client repaints, not the motion itself
+     * (scroll speed lives in DEFAULT_SCROLL_SPEED_CELLS / setScrollSpeed).
+     * 8 fps repaints the full-width bar 8×/s — on slower renderers
+     * (phosphor-ios relay, tmux) the ROTATION frame rewrites the entire bar
+     * row with its SGR runs, which Joe saw as a 1-1.5s freeze at every
+     * left-edge exit (2026-10-22). 8 fps with the paused-clock/rotation fix
+     * (2f7017e, Joe-confirmed clean) renders without the freeze; the value
+     * doubles the pre-fix cadence (Joe 10/22: "double the speed").
      */
     private static final int TARGET_FPS = 8;
     private static final double DEFAULT_SCROLL_SPEED_CELLS = 1.0;
@@ -207,17 +208,6 @@ public class TickerTape implements AnimatedBackground {
         synchronized (stateLock) {
             offsetCells = absoluteOffsetCells;
             ordered = (orderedItems.isEmpty() && items != null && !items.isEmpty()) ? items : orderedItems;
-        }
-        // TAPE-OFFSET PROBE (Joe 2026-10-26: bimodal visual pause every
-        // rotation, all other probes silent): every paint logs the absolute
-        // offset; a FLAT STRETCH server-side = the clock stopped advancing
-        // (tick logic); an ADVANCING offset during a client-side pause = the
-        // bytes/content left the server. Sampled, self-suppressing.
-        long nowProbe = System.currentTimeMillis();
-        if (nowProbe - lastOffsetLogMs >= 500) {
-            lastOffsetLogMs = nowProbe;
-            java.util.logging.Logger.getLogger(TickerTape.class.getName())
-                    .info("[TAPE-OFFSET] " + offsetCells);
         }
         if (ordered == null || ordered.isEmpty()) {
             return;

@@ -455,8 +455,6 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     public void updateScreen() throws IOException {
         synchronized (screenLock) {
             if (!needsRefresh) return;
-            final long t0 = System.nanoTime();
-            long drawNanos = 0;
             screen.doResizeIfNecessary();
             screen.clear();
             // Initialize the rendering buffer with theme colors so areas not
@@ -482,7 +480,6 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
                 var sub = io.jterm.graphics.TextGraphicsExtensions.subGraphics(g, window.getPosition(), window.getSize());
                 window.draw(sub);
             }
-            drawNanos = System.nanoTime();
             // Copy g buffer to screen
             for (int r = 0; r < screen.getTerminalSize().rows(); r++) {
                 for (int c = 0; c < screen.getTerminalSize().columns(); c++) {
@@ -496,20 +493,6 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
                 screen.refresh();
             }
             needsRefresh = false;
-            // PAINT-LATENCY PROBE (Joe 2026-10-26 "2s lag at the end of every
-            // quote"): log any paint+layout pass slower than 100ms with its
-            // phase breakdown. The lag lives SOMEWHERE on this thread — a
-            // slow window.draw(), a slow screen diff, or a slow refresh write
-            // — and this pins which. Off in tests (screen not started).
-            long probeEnd = System.nanoTime();
-            long probeMs = (probeEnd - t0) / 1_000_000L;
-            if (probeMs > 100) {
-                java.util.logging.Logger.getLogger(DefaultTextGUI.class.getName())
-                        .warning("[PAINT-LATENCY] " + probeMs + "ms total, draw "
-                                + (drawNanos - t0) / 1_000_000L + "ms, diff+write "
-                                + (probeEnd - drawNanos) / 1_000_000L + "ms, cells="
-                                + screen.getTerminalSize().rows() * screen.getTerminalSize().columns());
-            }
             // Call close() on windows being removed so they can clean up listeners/resources
             for (var w : windowsToRemove) {
                 w.close();

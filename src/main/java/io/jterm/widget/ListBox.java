@@ -50,6 +50,25 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
     }
 
     /**
+     * Provider fg resolution law: a provider color that is NOT the
+     * {@code DEFAULT} placeholder is consumed verbatim (so a viewer can pin
+     * an explicit dark gray that survives terminals ignoring SGR 2); the
+     * {@code DEFAULT} placeholder falls back to the theme foreground.
+     */
+    private static io.jterm.style.Color resolveProviderForeground(TextCell custom, io.jterm.style.Theme theme) {
+        var fg = custom.fg();
+        return fg == io.jterm.style.AnsiColor.DEFAULT ? theme.foreground() : fg;
+    }
+
+    /**
+     * Provider bg resolution law — mirrors {@link #resolveProviderForeground}.
+     */
+    private static io.jterm.style.Color resolveProviderBackground(TextCell custom, io.jterm.style.Theme theme) {
+        var bg = custom.bg();
+        return bg == io.jterm.style.AnsiColor.DEFAULT ? theme.background() : bg;
+    }
+
+    /**
      * Installs a per-row style provider (e.g. dim bulletin-view author/time
      * header lines) or clears it with {@code null}.
      *
@@ -358,7 +377,8 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
             } else if (rowStyleProvider != null) {
                 var custom = rowStyleProvider.apply(idx);
                 style = custom != null
-                    ? new TextCell(' ', theme.foreground(), theme.background(), custom.modifiers().toArray(new SGR[0]))
+                    ? new TextCell(' ', resolveProviderForeground(custom, theme), resolveProviderBackground(custom, theme),
+                        custom.modifiers().toArray(new SGR[0]))
                     : new TextCell(' ', theme.foreground(), theme.background());
             } else {
                 style = new TextCell(' ', theme.foreground(), theme.background());

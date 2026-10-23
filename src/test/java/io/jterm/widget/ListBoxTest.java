@@ -955,6 +955,45 @@ class ListBoxTest {
     }
 
     @Test
+    void rowStyleProviderExplicitColorIsConsumed() {
+        // Joe (2026-10-23 round 2): SGR.DIM alone is invisible on terminals
+        // that ignore SGR 2 (his command-line telnet). The provider must ALSO
+        // be able to pin an explicit dark fg so the dim reads everywhere.
+        // Law: explicit (non-DEFAULT) provider fg/bg ARE consumed; the
+        // DEFAULT placeholder keeps the theme colors.
+        var list = new ListBox<String>();
+        list.addItem("2026-10-23 10:00  joe");
+        list.addItem("body line");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(30, 3));
+        list.setSelectedIndex(1); // row 0 unselected
+        list.setRowStyleProvider((ListBox.RowStyle) row -> row == 0
+                ? new TextCell(" ", new io.jterm.style.RgbColor(96, 96, 96), AnsiColor.DEFAULT, java.util.EnumSet.of(SGR.DIM))
+                : null);
+        var buf = drawList(list, 30, 3);
+        var cell = buf.getCell(0, 0);
+        assertInstanceOf(io.jterm.style.RgbColor.class, cell.fg(), "provider fg must be consumed verbatim");
+        assertEquals(96, ((io.jterm.style.RgbColor) cell.fg()).r());
+        assertTrue(cell.modifiers().contains(SGR.DIM), "explicit color and DIM must combine");
+    }
+
+    @Test
+    void rowStyleProviderExplicitColorSelectionStillWins() {
+        // Selection law holds with explicit colors: the selected row keeps the
+        // selection palette even when the provider pins a color.
+        var list = new ListBox<String>();
+        list.addItem("A");
+        list.addItem("B");
+        list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 3));
+        list.setRowStyleProvider((ListBox.RowStyle) row -> row == 0
+                ? new TextCell(' ', new io.jterm.style.RgbColor(96, 96, 96), AnsiColor.DEFAULT)
+                : null);
+        var buf = drawList(list, 10, 3);
+        // Row 0 is selected → theme selection bg, NOT the provider color
+        assertEquals(AnsiColor.WHITE, buf.getCell(0, 0).bg(), "selection bg must win over provider");
+        assertFalse(buf.getCell(0, 0).fg() instanceof io.jterm.style.RgbColor, "selection fg must win over provider");
+    }
+
+    @Test
     void rowStyleProviderColorsStayThemeDriven() {
         // Provider returns a colored cell; ListBox must IGNORE its fg/bg and
         // keep theme colors (same law as Table's RowStyle).
@@ -963,11 +1002,12 @@ class ListBoxTest {
         list.addItem("Banana");
         list.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 3));
         list.setSelectedIndex(1);
+        // DEFAULT placeholders keep the theme colors; explicit colors ARE consumed (round-2 law).
         list.setRowStyleProvider((ListBox.RowStyle) row -> row == 0
-                ? new TextCell(' ', AnsiColor.RED, AnsiColor.GREEN)  // fg/bg ignored by law
+                ? new TextCell(' ', AnsiColor.DEFAULT, AnsiColor.DEFAULT)
                 : null);
         var buf = drawList(list, 10, 3);
-        assertNotEquals(AnsiColor.GREEN, buf.getCell(0, 0).bg(), "provider bg must NOT leak; theme stays");
-        assertNotEquals(AnsiColor.RED, buf.getCell(0, 0).fg(), "provider fg must NOT leak; theme stays");
+        assertEquals(AnsiColor.BLACK, buf.getCell(0, 0).bg(), "DEFAULT placeholder bg = theme background");
+        assertFalse(buf.getCell(0, 0).fg() instanceof io.jterm.style.RgbColor, "DEFAULT placeholder fg = theme foreground");
     }
 }

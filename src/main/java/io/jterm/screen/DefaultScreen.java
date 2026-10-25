@@ -38,7 +38,10 @@ public class DefaultScreen implements Screen {
      */
     private volatile boolean syncBracketSuppressed = false;
 
-    /** Opens/closes the bracket-suppression window (see field Javadoc). */
+    /** Opens/closes the bracket-suppression window (see field Javadoc).
+     *
+     * @param suppressed true to open the window, false to close it
+     */
     public void setSyncBracketSuppressed(boolean suppressed) {
         this.syncBracketSuppressed = suppressed;
     }

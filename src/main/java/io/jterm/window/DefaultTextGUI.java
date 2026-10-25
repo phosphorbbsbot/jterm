@@ -432,6 +432,9 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
      * gets coalesced away by clients that honor synchronized updates
      * (Terminal.app). Delegates to the DefaultScreen suppression window; a
      * no-op on screens that do not implement bracket suppression.
+     *
+     * @param suppressed true to open the suppression window (blink paints are
+     *                   emitted unbracketed), false to close it
      */
     public void setSyncBracketSuppressed(boolean suppressed) {
         if (screen instanceof io.jterm.screen.DefaultScreen ds) {

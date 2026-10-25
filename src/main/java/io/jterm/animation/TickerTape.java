@@ -63,7 +63,8 @@ public class TickerTape implements AnimatedBackground {
     /** Credit handed to a stalled tick: one beat of motion, not the backlog. */
     private static final long RESUME_CREDIT_NANOS = 250_000_000L;
 
-    /** @param seed non-negative long to pin the shuffle (deterministic order); -1 = random */
+    /** Pins the scroll-order shuffle for determinism.
+     * @param seed non-negative long to pin the shuffle (deterministic order); -1 = random */
     public void setShuffleSeed(long seed) {
         this.shuffleSeed = seed;
         // force re-derivation with the new seed, bypassing the sticky-subset
@@ -86,7 +87,8 @@ public class TickerTape implements AnimatedBackground {
         }
     }
 
-    /** @param cellsPerFrame cells to advance per frame (e.g. 0.5 = half speed) */
+    /** Sets the scroll speed of the tape.
+     * @param cellsPerFrame cells to advance per frame (e.g. 0.5 = half speed) */
     public void setScrollSpeed(double cellsPerFrame) {
         if (cellsPerFrame <= 0) {
             throw new IllegalArgumentException("scrollSpeed must be > 0, got " + cellsPerFrame);
@@ -116,7 +118,8 @@ public class TickerTape implements AnimatedBackground {
      */
     private boolean demoFallback = true;
 
-    /** @param demo false to paint a blank bar instead of demo items when the supplier has no data */
+    /** Controls whether the built-in demo items render when the feed is empty.
+     * @param demo false to paint a blank bar instead of demo items when the supplier has no data */
     public void setDemoFallback(boolean demo) {
         this.demoFallback = demo;
     }

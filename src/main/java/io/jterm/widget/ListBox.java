@@ -79,7 +79,8 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
         invalidate();
     }
 
-    /** Returns the installed row-style provider, or {@code null} when none. */
+    /** Returns the installed row-style provider, or {@code null} when none.
+     * @return the installed provider, or {@code null} when none is set */
     public RowStyle getRowStyleProvider() {
         return rowStyleProvider;
     }
@@ -115,7 +116,8 @@ public class ListBox<T> extends AbstractComponent implements ListDataListener {
         invalidate();
     }
 
-    /** Returns the installed row-segments provider, or {@code null} when none. */
+    /** Returns the installed row-segments provider, or {@code null} when none.
+     * @return the installed provider, or {@code null} when none is set */
     public RowSegments getRowSegments() {
         return rowSegmentsProvider;
     }

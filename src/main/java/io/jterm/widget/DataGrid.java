@@ -29,7 +29,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class DataGrid<T> extends AbstractComponent implements GridListener {
 
     private GridModel<T> model;
-    /** @return the column definitions in render order (tests only) */
+    /** Test seam: current column definitions in render order.
+     * @return the column definitions in render order (tests only) */
     public List<GridColumn<T>> columnsForTest() {
         return columns;
     }

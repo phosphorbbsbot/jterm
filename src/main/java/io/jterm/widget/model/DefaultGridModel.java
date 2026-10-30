@@ -29,8 +29,8 @@ public class DefaultGridModel<T> implements GridModel<T> {
     public void addRow(T row) {
         synchronized (rows) {
             rows.add(row);
+            fireGridChanged(new GridModelEvent(GridModelEventType.ROWS_ADDED, rows.size() - 1, rows.size() - 1));
         }
-        fireGridChanged();
     }
 
     /**
@@ -41,9 +41,53 @@ public class DefaultGridModel<T> implements GridModel<T> {
      */
     public void addRows(Collection<T> newRows) {
         synchronized (rows) {
+            int first = rows.size();
             rows.addAll(newRows);
+            fireGridChanged(new GridModelEvent(GridModelEventType.ROWS_ADDED, first, rows.size() - 1));
         }
-        fireGridChanged();
+    }
+
+    /**
+     * Inserts a single row at the given index, shifting all rows at or above
+     * that index down by one, and fires {@code gridChanged} exactly once
+     * (as {@link GridModelEventType#ROWS_ADDED} spanning just this row).
+     *
+     * @param index the index at which to insert (0..rowCount)
+     * @param row   the row to insert
+     */
+    public void insertRow(int index, T row) {
+        synchronized (rows) {
+            rows.add(index, row);
+        }
+        fireGridChanged(new GridModelEvent(GridModelEventType.ROWS_ADDED, index, index));
+    }
+
+    /**
+     * Removes the row at the given index and fires {@code gridChanged}
+     * exactly once (as {@link GridModelEventType#ROWS_REMOVED} spanning
+     * just this row).
+     *
+     * @param index the index of the row to remove
+     */
+    public void removeRow(int index) {
+        synchronized (rows) {
+            rows.remove(index);
+        }
+        fireGridChanged(new GridModelEvent(GridModelEventType.ROWS_REMOVED, index, index));
+    }
+
+    /**
+     * Removes a block of rows, inclusive of both ends, and fires
+     * {@code gridChanged} exactly once (as {@link GridModelEventType#ROWS_REMOVED}).
+     *
+     * @param first first row index to remove, inclusive
+     * @param last  last row index to remove, inclusive
+     */
+    public void removeRows(int first, int last) {
+        synchronized (rows) {
+            rows.subList(first, last + 1).clear();
+        }
+        fireGridChanged(new GridModelEvent(GridModelEventType.ROWS_REMOVED, first, last));
     }
 
     /**
@@ -59,7 +103,7 @@ public class DefaultGridModel<T> implements GridModel<T> {
             rows.clear();
             rows.addAll(newRows);
         }
-        fireGridChanged();
+        fireGridChanged(new GridModelEvent(GridModelEventType.STRUCTURE_CHANGED, -1, -1));
     }
 
     /**
@@ -67,9 +111,10 @@ public class DefaultGridModel<T> implements GridModel<T> {
      */
     public void clear() {
         synchronized (rows) {
+            int size = rows.size();
             rows.clear();
+            fireGridChanged(new GridModelEvent(GridModelEventType.STRUCTURE_CHANGED, 0, Math.max(0, size - 1)));
         }
-        fireGridChanged();
     }
 
     /** {@inheritDoc} — returns the current row count. */
@@ -100,9 +145,9 @@ public class DefaultGridModel<T> implements GridModel<T> {
         listeners.remove(listener);
     }
 
-    private void fireGridChanged() {
+    private void fireGridChanged(GridModelEvent event) {
         for (GridListener listener : listeners) {
-            listener.gridChanged();
+            listener.gridChanged(event);
         }
     }
 }

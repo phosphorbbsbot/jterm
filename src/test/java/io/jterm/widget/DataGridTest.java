@@ -335,4 +335,138 @@ class DataGridTest {
         model.clear();
         assertEquals(0, grid.getSelectedRow(), "Selection should clamp to 0 after clear");
     }
+
+    @Test
+    void removeRowAboveSelectionShiftsSelectionUp() {
+        // Law (same as Table, 0.1.7): the selection anchors to its CONTENT.
+        // NOTE: the selection is NOT at the table end — a bare clamp would land
+        // on a different row and this law must stay red for that shape.
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(
+                new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0),
+                new TestRow("C", 3, 3.0), new TestRow("D", 4, 4.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(2);
+        model.removeRow(0);
+        assertEquals(1, grid.getSelectedRow(), "Selection must slide up with its content");
+        assertEquals("C", model.getRow(grid.getSelectedRow()).name());
+    }
+
+    @Test
+    void removeRowsAboveSelectionShiftSelectionUpByBlock() {
+        // Discriminating shape: selection strictly BELOW the removed block's end
+        // and not at the table end — a bare clamp would land on a different row.
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(
+                new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0),
+                new TestRow("C", 3, 3.0), new TestRow("D", 4, 4.0), new TestRow("E", 5, 5.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(4);
+        model.removeRows(1, 3);
+        assertEquals(1, grid.getSelectedRow(), "Three rows removed above — slide up by three");
+        assertEquals("E", model.getRow(grid.getSelectedRow()).name());
+    }
+
+    @Test
+    void removeSelectedRowLandsOnSuccessor() {
+        // Removing the selected row itself: the selection stays at the removed
+        // slot, which now holds the successor row. (For this shape the clamp
+        // agrees with the content-anchor law — documented reality, not fluff.)
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0), new TestRow("C", 3, 3.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(1);
+        model.removeRow(1);
+        assertEquals(1, grid.getSelectedRow());
+        assertEquals("C", model.getRow(grid.getSelectedRow()).name());
+    }
+
+    @Test
+    void removeRowBelowSelectionDoesNotMoveSelection() {
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(0);
+        model.removeRow(1);
+        assertEquals(0, grid.getSelectedRow());
+    }
+
+    @Test
+    void removeRowAtLastSelectionClamps() {
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(1);
+        model.removeRow(1);
+        assertEquals(0, grid.getSelectedRow(), "Single row left — selection clamps onto it");
+    }
+
+    @Test
+    void removeRowsBlockAboveSelectionShiftsSelectionUp() {
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(
+                new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0), new TestRow("C", 3, 3.0),
+                new TestRow("D", 4, 4.0), new TestRow("E", 5, 5.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(4);
+        model.removeRows(1, 2);
+        assertEquals(2, grid.getSelectedRow(), "Two rows removed above — slide up by two");
+        assertEquals("E", model.getRow(grid.getSelectedRow()).name());
+    }
+
+    @Test
+    void insertRowBeforeSelectionShiftsSelectionDown() {
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(1);
+        model.insertRow(1, new TestRow("NEW", 9, 9.0));
+        assertEquals(2, grid.getSelectedRow(), "Insert under the selection must slide it down");
+        assertEquals("B", model.getRow(grid.getSelectedRow()).name());
+    }
+
+    @Test
+    void insertRowAfterSelectionDoesNotMoveSelection() {
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        grid.setSelectedRow(0);
+        model.insertRow(1, new TestRow("NEW", 9, 9.0));
+        assertEquals(0, grid.getSelectedRow());
+    }
+
+    @Test
+    void legacyLambdaListenerStillFiresOnStructuredChange() {
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows(new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0));
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        var fired = new int[]{0};
+        model.addGridListener(() -> fired[0]++);   // plain (no-arg) lambda — the pre-payload API
+        model.removeRow(0);
+        assertEquals(1, fired[0], "Default payload routing must reach no-arg listeners exactly once");
+    }
+
+    @Test
+    void payloadListenerSeesRemoveRange() {
+        var model = modelWithRows(new TestRow("A", 1, 1.0), new TestRow("B", 2, 2.0), new TestRow("C", 3, 3.0));
+        final var events = new java.util.ArrayList<io.jterm.widget.model.GridModelEvent>();
+        model.addGridListener(() -> {});
+        model.addGridListener(new io.jterm.widget.model.GridListener() {
+            @Override public void gridChanged() { }
+            @Override public void gridChanged(io.jterm.widget.model.GridModelEvent e) { events.add(e); }
+        });
+        model.removeRow(2);
+        assertEquals(1, events.size(), "Payload listener hears the event, no-arg lambda hears the default route");
+        assertEquals(io.jterm.widget.model.GridModelEventType.ROWS_REMOVED, events.getFirst().type());
+        assertEquals(2, events.getFirst().firstRow());
+    }
 }

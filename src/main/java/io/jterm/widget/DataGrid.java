@@ -15,6 +15,7 @@ import io.jterm.util.TerminalTextUtils;
 import io.jterm.widget.model.DefaultGridModel;
 import io.jterm.widget.model.GridColumn;
 import io.jterm.widget.model.GridListener;
+import io.jterm.widget.model.GridModelEvent;
 import io.jterm.widget.model.GridModel;
 
 import java.util.List;
@@ -215,12 +216,49 @@ public class DataGrid<T> extends AbstractComponent implements GridListener {
 
     // ---- GridListener -----------------------------------------------------
 
-    /** {@inheritDoc} — clamps selection/scroll on model changes. */
+    /** {@inheritDoc} — legacy no-payload hook: clamp + scroll housekeeping only. */
     @Override
     public void gridChanged() {
+        finishModelChange(null);
+    }
+
+    /** Payload-aware hook — keeps the selection anchored to its CONTENT,
+     * mirroring Table's law: rows shifted at or above the selection shift the
+     * selection with them; STRUCTURE_CHANGED preserves the selection. */
+    @Override
+    public void gridChanged(GridModelEvent event) {
+        finishModelChange(event);
+    }
+
+    private void finishModelChange(GridModelEvent event) {
         int count = model == null ? 0 : model.getRowCount();
-        if (selectedRow >= count) {
-            selectedRow = Math.max(0, count - 1);
+        int old = selectedRow;
+        if (event != null) {
+            switch (event.type()) {
+                case ROWS_ADDED -> {
+                    // Rows inserted at or above the selected index slide the
+                    // selected row down; the selection must slide with it.
+                    if (event.firstRow() >= 0 && event.firstRow() <= selectedRow) {
+                        selectedRow += event.lastRow() - event.firstRow() + 1;
+                    }
+                }
+                case ROWS_REMOVED -> {
+                    // Rows removed above the selected index slide the selection
+                    // up; a removal covering the selected index anchors it to
+                    // the removed block's start (the slot holding the successor).
+                    if (selectedRow > event.lastRow()) {
+                        selectedRow -= event.lastRow() - event.firstRow() + 1;
+                    } else if (selectedRow >= event.firstRow()) {
+                        selectedRow = event.firstRow();
+                    }
+                }
+                default -> { }
+            }
+        }
+        if (count == 0) {
+            selectedRow = 0;
+        } else if (selectedRow >= count) {
+            selectedRow = count - 1;
         }
         // Clamp scrollOffsetY so it never exceeds the model size after a shrink.
         int maxScrollY = Math.max(0, count - 1);
@@ -228,6 +266,9 @@ public class DataGrid<T> extends AbstractComponent implements GridListener {
             scrollOffsetY = maxScrollY;
         }
         ensureVisible();
+        if (old != selectedRow) {
+            fireSelectionChanged();
+        }
         invalidate();
     }
 

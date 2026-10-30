@@ -238,17 +238,26 @@ public class DataGrid<T> extends AbstractComponent implements GridListener {
                 case ROWS_ADDED -> {
                     // Rows inserted at or above the selected index slide the
                     // selected row down; the selection must slide with it.
-                    if (event.firstRow() >= 0 && event.firstRow() <= selectedRow) {
-                        selectedRow += event.lastRow() - event.firstRow() + 1;
+                    // A virtual selection (at/beyond the pre-change end —
+                    // e.g. an empty table) anchors nothing and stays put;
+                    // the clamp places it. Block events carry the final
+                    // count, so the pre-change count comes from block size.
+                    int block = event.lastRow() - event.firstRow() + 1;
+                    int oldCount = count - block;
+                    if (event.firstRow() >= 0 && event.firstRow() <= selectedRow && selectedRow < oldCount) {
+                        selectedRow += block;
                     }
                 }
                 case ROWS_REMOVED -> {
                     // Rows removed above the selected index slide the selection
                     // up; a removal covering the selected index anchors it to
                     // the removed block's start (the slot holding the successor).
-                    if (selectedRow > event.lastRow()) {
-                        selectedRow -= event.lastRow() - event.firstRow() + 1;
-                    } else if (selectedRow >= event.firstRow()) {
+                    // A virtual selection (at/beyond the pre-change end) stays.
+                    int block = event.lastRow() - event.firstRow() + 1;
+                    int oldCount = count + block;
+                    if (selectedRow > event.lastRow() && selectedRow < oldCount) {
+                        selectedRow -= block;
+                    } else if (selectedRow >= event.firstRow() && selectedRow < oldCount) {
                         selectedRow = event.firstRow();
                     }
                 }

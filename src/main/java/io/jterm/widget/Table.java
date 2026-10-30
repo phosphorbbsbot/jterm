@@ -145,6 +145,7 @@ public class Table extends AbstractComponent implements TableModelListener {
     /** {@inheritDoc} — selection anchors to its content; clamps on model changes. */
     @Override
     public void tableChanged(TableModelEvent e) {
+        int count = model == null ? 0 : model.getRowCount();
         if (e.type() == TableModelEventType.ROWS_ADDED) {
             // Keep the selection on the SAME row content it pointed at: rows
             // inserted at or above the selected index slide the selected row
@@ -152,16 +153,26 @@ public class Table extends AbstractComponent implements TableModelListener {
             // append below the selection changes nothing. Without this, a
             // mid-table insert leaves the highlight on whichever row now
             // occupies the old index — a different row than the user selected.
-            if (e.firstRow() >= 0 && e.firstRow() <= selectedRow) {
-                selectedRow += e.lastRow() - e.firstRow() + 1;
+            //
+            // A selection beyond the pre-change last row anchors VIRTUAL
+            // content (nothing, e.g. on an empty table): it must not shift.
+            // Block events carry the final count, so the pre-change count is
+            // recoverable from the block size.
+            int block = e.lastRow() - e.firstRow() + 1;
+            int oldCount = count - block;
+            if (e.firstRow() >= 0 && e.firstRow() <= selectedRow && selectedRow < oldCount) {
+                selectedRow += block;
             }
         } else if (e.type() == TableModelEventType.ROWS_REMOVED) {
             // Symmetric anchor: rows removed above the selected index slide the
             // selection up; a removal covering the selected index anchors it to
             // the removed block's start (the slot holding the successor row).
-            if (selectedRow > e.lastRow()) {
-                selectedRow -= e.lastRow() - e.firstRow() + 1;
-            } else if (selectedRow >= e.firstRow()) {
+            // A virtual selection (at/beyond the pre-change end) does not move.
+            int block = e.lastRow() - e.firstRow() + 1;
+            int oldCount = count + block;
+            if (selectedRow > e.lastRow() && selectedRow < oldCount) {
+                selectedRow -= block;
+            } else if (selectedRow >= e.firstRow() && selectedRow < oldCount) {
                 selectedRow = e.firstRow();
             }
         }

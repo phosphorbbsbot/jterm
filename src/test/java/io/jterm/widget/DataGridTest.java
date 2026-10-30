@@ -469,4 +469,19 @@ class DataGridTest {
         assertEquals(io.jterm.widget.model.GridModelEventType.ROWS_REMOVED, events.getFirst().type());
         assertEquals(2, events.getFirst().firstRow());
     }
+
+    @Test
+    void selectionOnEmptyGridDoesNotShiftWhenRowsFirstArrive() {
+        // Virtual-selection law: a selection on an EMPTY grid anchors nothing —
+        // rows first arriving must leave the selection at the top, not drag it
+        // to the end of the arrived block.
+        var columns = List.of(GridColumn.text("N", TestRow::name));
+        var model = modelWithRows();   // starts empty
+        var grid = new DataGrid<>(columns, model);
+        grid.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(20, 5));
+        model.addRow(new TestRow("A", 1, 1.0));
+        model.addRow(new TestRow("B", 2, 2.0));
+        assertEquals(0, grid.getSelectedRow(), "First arrival keeps the selection at the top");
+        assertEquals("A", model.getRow(grid.getSelectedRow()).name());
+    }
 }

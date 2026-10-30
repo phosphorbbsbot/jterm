@@ -151,4 +151,84 @@ class DefaultTableModelTest {
         model.clear();
         assertTrue(listener.events.isEmpty());
     }
+
+    // ---- replaceAll: diff-based rebuild events -------------------------------
+
+    @Test
+    void replaceAllDeleteEmitsSingleRowsRemoved() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        model.addRow("r1");
+        model.addRow("r2");
+        model.addRow("r3");
+        CapturingListener listener = new CapturingListener();
+        model.addTableModelListener(listener);
+        model.replaceAll(List.of(List.of("r1"), List.of("r3")));
+        assertEquals(1, listener.events.size(), "A middle-row delete must be ONE removal event");
+        assertEquals(TableModelEventType.ROWS_REMOVED, listener.events.getFirst().type());
+        assertEquals(1, listener.events.getFirst().firstRow());
+        assertEquals(1, listener.events.getFirst().lastRow());
+    }
+
+    @Test
+    void replaceAllAppendEmitsSingleRowsAdded() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        model.addRow("r1");
+        CapturingListener listener = new CapturingListener();
+        model.addTableModelListener(listener);
+        model.replaceAll(List.of(List.of("r1"), List.of("r2")));
+        assertEquals(1, listener.events.size());
+        assertEquals(TableModelEventType.ROWS_ADDED, listener.events.getFirst().type());
+        assertEquals(1, listener.events.getFirst().firstRow());
+    }
+
+    @Test
+    void replaceAllEditEmitsSingleRowsChangedAtSameSlot() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        model.addRow("r1");
+        model.addRow("r2");
+        CapturingListener listener = new CapturingListener();
+        model.addTableModelListener(listener);
+        model.replaceAll(List.of(List.of("r1"), List.of("r2-edited")));
+        assertEquals(1, listener.events.size(),
+                "An in-place edit must be ONE rows-changed event — remove+add would double-move selections");
+        assertEquals(TableModelEventType.ROWS_CHANGED, listener.events.getFirst().type());
+        assertEquals(1, listener.events.getFirst().firstRow());
+        assertEquals("r2-edited", model.getValueAt(1, 0));
+    }
+
+    @Test
+    void replaceAllNoChangeFiresNothing() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        model.addRow("r1");
+        model.addRow("r2");
+        CapturingListener listener = new CapturingListener();
+        model.addTableModelListener(listener);
+        model.replaceAll(List.of(List.of("r1"), List.of("r2")));
+        assertEquals(0, listener.events.size(), "Identical content must not disturb the table");
+    }
+
+    @Test
+    void replaceAllPrependEmitsAddedAtZero() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        model.addRow("r1");
+        CapturingListener listener = new CapturingListener();
+        model.addTableModelListener(listener);
+        model.replaceAll(List.of(List.of("r0"), List.of("r1")));
+        assertEquals(1, listener.events.size());
+        assertEquals(TableModelEventType.ROWS_ADDED, listener.events.getFirst().type());
+        assertEquals(0, listener.events.getFirst().firstRow());
+    }
+
+    @Test
+    void replaceAllFullReplaceFromEmpty() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        CapturingListener listener = new CapturingListener();
+        model.addTableModelListener(listener);
+        model.replaceAll(List.of(List.of("r1"), List.of("r2")));
+        assertEquals(2, model.getRowCount());
+        assertEquals(1, listener.events.size());
+        assertEquals(TableModelEventType.ROWS_ADDED, listener.events.getFirst().type());
+        assertEquals(0, listener.events.getFirst().firstRow());
+        assertEquals(1, listener.events.getFirst().lastRow());
+    }
 }

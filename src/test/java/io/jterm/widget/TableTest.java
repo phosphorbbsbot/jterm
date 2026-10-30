@@ -492,4 +492,49 @@ class TableTest {
         var table = new Table(model);
         assertTrue(table.getPreferredSize().columns() >= 3);
     }
+
+    @Test
+    void selectionFollowsContentThroughReplaceAllMiddleDelete() {
+        // Discriminating shape: selection STRICTLY above the removed row and
+        // below the table end — a bare clamp would land on a different row.
+        DefaultTableModel model = new DefaultTableModel("N");
+        model.addRow("A");
+        model.addRow("B");
+        model.addRow("C");
+        model.addRow("D");
+        model.addRow("E");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(12, 6));
+        table.setSelectedRow(3);   // "D"
+        model.replaceAll(List.of(
+                List.of("A"), List.of("C"), List.of("D"), List.of("E")));   // "B" removed
+        assertEquals(2, table.getSelectedRow(), "Selection must slide up with 'D'");
+        assertEquals("D", model.getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void selectionFollowsContentThroughReplaceAllInsert() {
+        DefaultTableModel model = new DefaultTableModel("N");
+        model.addRow("A");
+        model.addRow("B");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(12, 6));
+        table.setSelectedRow(1);   // "B"
+        model.replaceAll(List.of(List.of("A"), List.of("NEW"), List.of("B")));
+        assertEquals(2, table.getSelectedRow(), "Insert at/above must slide the selection down");
+        assertEquals("B", model.getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void selectionOnEmptyTableDoesNotShiftWhenRebuiltFromNothing() {
+        // Virtual-selection law: a selection on an EMPTY table anchors nothing —
+        // a block rebuild (empty → N rows) must leave the selection at the top,
+        // not drag it to the end of the inserted block.
+        DefaultTableModel model = new DefaultTableModel("N");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(12, 6));
+        model.replaceAll(List.of(List.of("A"), List.of("B"), List.of("C")));
+        assertEquals(0, table.getSelectedRow(), "Rebuild from empty keeps the selection at the top");
+        assertEquals("A", model.getValueAt(table.getSelectedRow(), 0));
+    }
 }

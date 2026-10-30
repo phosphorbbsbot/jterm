@@ -106,4 +106,57 @@ public class DefaultTableModel extends AbstractTableModel {
         rows.clear();
         fireRowsChanged(0, Math.max(0, size - 1));
     }
+
+    /**
+     * Replaces the model's contents with {@code newRows}, diffing old against
+     * new and emitting the true structural events (ROWS_REMOVED for rows that
+     * disappeared, ROWS_ADDED for rows that appeared) so listeners — and the
+     * Table's content-anchored selection — follow the actual row movement
+     * instead of surviving a wholesale structure change. Fires nothing when
+     * the content is identical; at most ONE removal event and ONE addition
+     * event otherwise (common prefix/suffix are left untouched).
+     *
+     * @param newRows the new row contents
+     */
+    public void replaceAll(List<List<String>> newRows) {
+        List<List<String>> target = new ArrayList<>();
+        for (List<String> row : newRows) {
+            target.add(new ArrayList<>(row));
+        }
+        int oldSize = rows.size();
+        int newSize = target.size();
+        // Common prefix.
+        int p = 0;
+        while (p < oldSize && p < newSize && rows.get(p).equals(target.get(p))) {
+            p++;
+        }
+        // Common suffix (never reaching into the prefix).
+        int s = 0;
+        while (s < oldSize - p && s < newSize - p
+                && rows.get(oldSize - 1 - s).equals(target.get(newSize - 1 - s))) {
+            s++;
+        }
+        int removedLast = oldSize - s - 1;   // inclusive; valid only if >= p
+        int addedLast = newSize - s - 1;     // inclusive; valid only if >= p
+        if (p <= removedLast && p <= addedLast && removedLast - p == addedLast - p) {
+            // Same-size middle: an in-place edit / same-count replacement.
+            // One ROWS_CHANGED keeps every listener's selection anchored on
+            // the slot instead of double-moving through remove+add.
+            for (int i = p; i <= removedLast; i++) {
+                rows.set(i, new ArrayList<>(target.get(i)));
+            }
+            fireRowsChanged(p, removedLast);
+        } else {
+            if (p <= removedLast) {
+                rows.subList(p, removedLast + 1).clear();
+                fireRowsRemoved(p, removedLast);
+            }
+            if (p <= addedLast) {
+                for (int i = p; i <= addedLast; i++) {
+                    rows.add(i, new ArrayList<>(target.get(i)));
+                }
+                fireRowsAdded(p, addedLast);
+            }
+        }
+    }
 }

@@ -142,21 +142,38 @@ public class Table extends AbstractComponent implements TableModelListener {
         return model;
     }
 
-    /** {@inheritDoc} — clamps selection/scroll on model changes. */
+    /** {@inheritDoc} — selection anchors to its content; clamps on model changes. */
     @Override
     public void tableChanged(TableModelEvent e) {
-        if (e.type() == TableModelEventType.ROWS_REMOVED
-                || e.type() == TableModelEventType.ROWS_CHANGED
-                || e.type() == TableModelEventType.STRUCTURE_CHANGED) {
-            if (model != null && selectedRow >= model.getRowCount()) {
-                selectedRow = Math.max(0, model.getRowCount() - 1);
+        if (e.type() == TableModelEventType.ROWS_ADDED) {
+            // Keep the selection on the SAME row content it pointed at: rows
+            // inserted at or above the selected index slide the selected row
+            // (and the highlight) down by the number of inserted rows. A plain
+            // append below the selection changes nothing. Without this, a
+            // mid-table insert leaves the highlight on whichever row now
+            // occupies the old index — a different row than the user selected.
+            if (e.firstRow() >= 0 && e.firstRow() <= selectedRow) {
+                selectedRow += e.lastRow() - e.firstRow() + 1;
+            }
+        } else if (e.type() == TableModelEventType.ROWS_REMOVED) {
+            // Symmetric anchor: rows removed above the selected index slide the
+            // selection up; a removal covering the selected index anchors it to
+            // the removed block's start (the slot holding the successor row).
+            if (selectedRow > e.lastRow()) {
+                selectedRow -= e.lastRow() - e.firstRow() + 1;
+            } else if (selectedRow >= e.firstRow()) {
+                selectedRow = e.firstRow();
             }
         }
-        // On STRUCTURE_CHANGED, clamp selection to valid range (already done
-        // above) but do NOT reset to row 0 — that discards the user's selection
-        // on every model refresh. Only reset scroll if the selection is now
-        // above the viewport.
+        // Clamp selection to the valid range after any structural change
+        // (e.g. removals or a clear() that shrank the table).
+        if (model != null && selectedRow >= model.getRowCount()) {
+            selectedRow = Math.max(0, model.getRowCount() - 1);
+        }
         if (e.type() == TableModelEventType.STRUCTURE_CHANGED) {
+            // Do NOT reset selectedRow to 0 — that discards the user's selection
+            // on every model refresh. Only fix scroll if selection is now above
+            // the viewport.
             if (scrollOffset > selectedRow) {
                 scrollOffset = selectedRow;
             }

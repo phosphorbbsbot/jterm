@@ -306,6 +306,130 @@ class TableTest {
     }
 
     @Test
+    void rowsAddedBeforeSelectionShiftsSelectionDown() {
+        // Law: the selection anchors to its CONTENT, not to the index. Inserting
+        // a row at or above the selected index slides the selected row down; the
+        // highlight must ride along with it.
+        DefaultTableModel model = new DefaultTableModel("A");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.addRow("row0");
+        model.addRow("row1");
+        model.addRow("row2");
+        table.setSelectedRow(2);
+        model.insertRow(2, "NEW");
+        // old row2 ("row2") is now row3 — the selection must follow it
+        assertEquals(3, table.getSelectedRow());
+        assertEquals("row2", model.getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void rowsAddedAtSelectionTopShiftsSelectionDown() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.addRow("row0");
+        model.addRow("row1");
+        table.setSelectedRow(1);
+        model.insertRow(1, "NEW");
+        assertEquals(2, table.getSelectedRow());
+        assertEquals("row1", model.getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void rowsAddedAfterSelectionDoesNotMoveSelection() {
+        // Appending below the selection changes nothing — the selected content
+        // never moved.
+        DefaultTableModel model = new DefaultTableModel("A");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.addRow("row0");
+        model.addRow("row1");
+        table.setSelectedRow(0);
+        model.insertRow(2, "row2");
+        model.addRow("row3");
+        assertEquals(0, table.getSelectedRow());
+        assertEquals("row0", model.getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void rowsMultiAddedBeforeSelectionShiftsSelectionDown() {
+        // A custom model can fire one ROWS_ADDED event for a multi-row block:
+        // the selection must slide down by the full block length.
+        var model = new io.jterm.widget.model.AbstractTableModel() {
+            private final List<String> rows = new ArrayList<>();
+            @Override public int getRowCount() { return rows.size(); }
+            @Override public int getColumnCount() { return 1; }
+            @Override public String getColumnName(int col) { return "A"; }
+            @Override public String getValueAt(int row, int col) { return rows.get(row); }
+            void insertBlock(int index, int count) {
+                for (int i = 0; i < count; i++) rows.add(index, "NEW" + i);
+                fireRowsAdded(index, index + count - 1);
+            }
+        };
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.rows.add("row0");
+        model.rows.add("row1");
+        table.setSelectedRow(0);
+        model.insertBlock(0, 2);
+        assertEquals(2, table.getSelectedRow());
+        assertEquals("row0", table.getModel().getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void rowsRemovedAboveSelectionShiftsSelectionUp() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.addRow("row0");
+        model.addRow("row1");
+        model.addRow("row2");
+        table.setSelectedRow(2);
+        model.removeRow(0);
+        assertEquals(1, table.getSelectedRow());
+        assertEquals("row2", model.getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void rowsRemovedAtSelectionAnchorsToRemovedSlot() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.addRow("row0");
+        model.addRow("row1");
+        model.addRow("row2");
+        table.setSelectedRow(1);
+        model.removeRow(1);
+        // removed the selected row — selection lands on the content that follows
+        assertEquals(1, table.getSelectedRow());
+        assertEquals("row2", model.getValueAt(table.getSelectedRow(), 0));
+    }
+
+    @Test
+    void rowsRemovedBelowSelectionDoesNotMoveSelection() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.addRow("row0");
+        model.addRow("row1");
+        table.setSelectedRow(0);
+        model.removeRow(1);
+        assertEquals(0, table.getSelectedRow());
+    }
+
+    @Test
+    void rowsRemovedClampsWhenTableEmpties() {
+        DefaultTableModel model = new DefaultTableModel("A");
+        var table = new Table(model);
+        table.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(10, 5));
+        model.addRow("row0");
+        table.setSelectedRow(0);
+        model.removeRow(0);
+        assertEquals(0, table.getSelectedRow());
+    }
+
+    @Test
     void getTableModelRowsReturnsCopy() {
         var table = new Table("A");
         table.addRow("x");

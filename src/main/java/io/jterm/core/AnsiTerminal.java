@@ -63,12 +63,21 @@ public class AnsiTerminal implements Terminal {
         this.in = System.in;
         this.decoder = new InputDecoder(System.in);
         this.fixedSize = null;
-        this.lastSize = queryTerminalSize();
-        // Skip stty capture/restore when there's no real console (e.g. Maven Surefire).
-        // In that environment, stty calls block and eventually timeout, wasting ~1.5s.
+        // Skip stty capture/restore when there's no real console (e.g. Maven
+        // Surefire). In that environment, stty calls block and eventually
+        // timeout, wasting ~1.5s.
         boolean hasConsole = System.console() != null;
         this.originalStty = hasConsole ? captureStty() : null;
         this.ownStty = hasConsole;
+        // Raw/no-echo BEFORE any ANSI goes out: queryTerminalSize sends ESC[18t
+        // and the terminal answers ESC[8;rows;cols t on our stdin. If the tty
+        // is still in the shell's cooked mode (echo on), the kernel line
+        // discipline echoes that reply back onto the screen — the stray
+        // "ESC[8;68;122t" the user saw before the app's first render.
+        if (hasConsole) {
+            setRawMode();
+        }
+        this.lastSize = queryTerminalSize();
         startReaderThread();
     }
 

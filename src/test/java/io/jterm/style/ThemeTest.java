@@ -50,8 +50,21 @@ class ThemeTest {
     }
 
     @Test
-    void builtInThemesHasNineEntries() {
-        assertEquals(9, Theme.BUILT_IN.length);
+    void artDecoThemeHasExpectedColors() {
+        var t = Theme.ART_DECO;
+        assertEquals(AnsiColor.BRIGHT_WHITE, t.foreground());
+        assertEquals(AnsiColor.BLACK, t.background());
+        assertEquals(AnsiColor.BRIGHT_YELLOW, t.selectionBg());
+        assertEquals(AnsiColor.BRIGHT_YELLOW, t.titleFg());
+        assertEquals(AnsiColor.BRIGHT_YELLOW, t.headerFg());
+        assertEquals(AnsiColor.YELLOW, t.border());
+        assertEquals(AnsiColor.BLACK, t.titleBg());
+        assertEquals(AnsiColor.BLACK, t.headerBg());
+    }
+
+    @Test
+    void builtInThemesHasTenEntries() {
+        assertEquals(10, Theme.BUILT_IN.length);
     }
 
     @Test
@@ -101,6 +114,7 @@ class ThemeTest {
         assertEquals(Theme.CLASSIC_PC, ThemeManager.cycle());
         assertEquals(Theme.CYBERPUNK, ThemeManager.cycle());
         assertEquals(Theme.AMBER_ON_BLACK, ThemeManager.cycle());
+        assertEquals(Theme.ART_DECO, ThemeManager.cycle());
         assertEquals(Theme.PAPER, ThemeManager.cycle());
         assertEquals(Theme.DARK, ThemeManager.cycle()); // wraps around
         // Reset

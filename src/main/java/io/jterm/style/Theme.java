@@ -19,6 +19,7 @@ package io.jterm.style;
  *   <li>{@link #CLASSIC_PC} — bright cyan on blue (Turbo Vision / PCBoard look)</li>
  *   <li>{@link #CYBERPUNK} — neon magenta/cyan on near-black</li>
  *   <li>{@link #AMBER_ON_BLACK} — amber CRT (P3 phosphor) look, twin of green-on-black</li>
+ *   <li>{@link #ART_DECO} — cream on charcoal with gold accents, gilded lounge look</li>
  *   <li>{@link #PAPER} — black on white, for daylight/high ambient light</li>
  * </ul>
  *
@@ -177,6 +178,26 @@ public record Theme(
             AnsiColor.BLACK                // headerBg
     );
 
+    /**
+     * Art Deco: cream text on deep charcoal with gold accents — the gilded
+     * lounge / black-lacquer-and-brass look. Borders and titles are gold;
+     * body text is bright white reading as cream against the dark ground.
+     */
+    public static final Theme ART_DECO = new Theme(
+            AnsiColor.BRIGHT_WHITE,        // foreground — cream body text
+            AnsiColor.BLACK,               // background — deep charcoal
+            AnsiColor.BLACK,               // selectionFg
+            AnsiColor.BRIGHT_YELLOW,       // selectionBg — gold highlight
+            AnsiColor.BLACK,               // focusFg
+            AnsiColor.BRIGHT_YELLOW,       // focusBg — gold focus
+            AnsiColor.YELLOW,              // border — muted gold frame
+            AnsiColor.BRIGHT_YELLOW,       // titleFg — gold titles
+            AnsiColor.BLACK,               // titleBg
+            AnsiColor.BRIGHT_YELLOW,       // accent — gold
+            AnsiColor.BRIGHT_YELLOW,       // headerFg — gold headers
+            AnsiColor.BLACK                // headerBg
+    );
+
     /** Paper: black on white — the daylight/high-ambient-light extreme. */
     public static final Theme PAPER = new Theme(
             AnsiColor.BLACK,               // foreground
@@ -203,6 +224,7 @@ public record Theme(
             Theme.CLASSIC_PC,
             Theme.CYBERPUNK,
             Theme.AMBER_ON_BLACK,
+            Theme.ART_DECO,
             Theme.PAPER
     };
 
@@ -220,6 +242,7 @@ public record Theme(
         if (this == CLASSIC_PC) return "Cyan on Blue";
         if (this == CYBERPUNK) return "Cyberpunk";
         if (this == AMBER_ON_BLACK) return "Amber on Black";
+        if (this == ART_DECO) return "Art Deco";
         if (this == PAPER) return "Paper White";
         return "Custom";
     }
@@ -240,6 +263,7 @@ public record Theme(
         if (this == CLASSIC_PC) return "classic_pc";
         if (this == CYBERPUNK) return "cyberpunk";
         if (this == AMBER_ON_BLACK) return "amber_on_black";
+        if (this == ART_DECO) return "art_deco";
         if (this == PAPER) return "paper";
         return null;
     }

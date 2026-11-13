@@ -15,6 +15,28 @@ class SgrStateTrackerTest {
     }
 
     @Test
+    void nullBackgroundCellDoesNotThrow() {
+        // API-legal "transparent" bg: Label(text, fg, null) stores TextCell(' ', fg, null).
+        // The live wire (DefaultScreen refresh) hits these via every styled-label door.
+        var tracker = new DefaultScreen.SgrStateTracker();
+        tracker.transitionTo(TextCell.EMPTY);
+        var transparent = new TextCell(' ', AnsiColor.RED, null);
+        byte[] output = tracker.transitionTo(transparent);
+        String s = new String(output);
+        assertTrue(s.contains("31m"), "fg still emitted");
+        assertFalse(s.contains("41m") && !s.contains("[1;41"), "no bg SGR emitted for null bg");
+    }
+
+    @Test
+    void nullForegroundCellDoesNotThrow() {
+        var tracker = new DefaultScreen.SgrStateTracker();
+        tracker.transitionTo(TextCell.EMPTY);
+        var ghostFg = new TextCell(' ', null, AnsiColor.DEFAULT);
+        // null fg must be skipped, DEFAULT bg is no change — expect no bytes, no NPE
+        assertEquals(0, tracker.transitionTo(ghostFg).length);
+    }
+
+    @Test
     void foregroundChangeEmitsSequence() {
         var tracker = new DefaultScreen.SgrStateTracker();
         tracker.transitionTo(TextCell.EMPTY);

@@ -519,12 +519,15 @@ public class DefaultScreen implements Screen {
             var sb = new StringBuilder();
             boolean changed = false;
 
-            if (!target.fg().equals(currentFg)) {
+            // Null fg/bg are API-legal ("transparent" — Label(text, fg, null) stores
+            // a null-bg TextCell); the diff tracker must skip, never NPE: unchanged
+            // current state carries on to the next cell.
+            if (target.fg() != null && !target.fg().equals(currentFg)) {
                 sb.append(AnsiCodes.CSI).append(new String(target.fg().fgSequence(), StandardCharsets.UTF_8)).append("m");
                 currentFg = target.fg();
                 changed = true;
             }
-            if (!target.bg().equals(currentBg)) {
+            if (target.bg() != null && !target.bg().equals(currentBg)) {
                 sb.append(AnsiCodes.CSI).append(new String(target.bg().bgSequence(), StandardCharsets.UTF_8)).append("m");
                 currentBg = target.bg();
                 changed = true;

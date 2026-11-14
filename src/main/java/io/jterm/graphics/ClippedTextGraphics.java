@@ -15,6 +15,17 @@ public class ClippedTextGraphics extends TextGraphics {
     private final TerminalPosition offset;
 
     /**
+     * CURSOR-ANCHOR LAW: absolute origin of this clip — chained through the
+     * parent so widgets report caret cells in absolute screen coordinates.
+     */
+    @Override
+    public TerminalPosition absoluteOrigin() {
+        var parentOrigin = parent.absoluteOrigin();
+        return new TerminalPosition(offset.column() + parentOrigin.column(),
+                offset.row() + parentOrigin.row());
+    }
+
+    /**
      * Create a clipped graphics view that writes through to a parent at an offset.
      *
      * @param parent the parent graphics context

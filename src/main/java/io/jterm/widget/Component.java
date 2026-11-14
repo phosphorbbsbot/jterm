@@ -128,4 +128,15 @@ public interface Component {
      * @param focusable true to allow TAB focus traversal
      */
     default void setFocusable(boolean focusable) {}
+
+    /**
+     * CURSOR-ANCHOR LAW (2026-11-13): the absolute screen cell where the text
+     * cursor should be parked after a frame, while this component holds focus
+     * and draws text. Reported DURING drawing (the widget knows its draw
+     * origin); null when unfocused or not a text widget — the gui clears the
+     * anchor every frame based on the focused component's report.
+     *
+     * @return the absolute caret cell (0-based), or null
+     */
+    default TerminalPosition getCursorCell() { return null; }
 }

@@ -489,6 +489,21 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
                     screen.setCell(c, r, buf.getCell(c, r));
                 }
             }
+            // CURSOR-ANCHOR LAW (2026-11-13): set the screen anchor from the
+            // active window's focused component BEFORE the refresh so the
+            // terminal cursor parks ON the caret character at frame end —
+            // client-side cursors then render on the caret, never beside it.
+            // Cleared first each frame: no focused text widget → no anchor.
+            screen.setCursorAnchor(null);
+            var anchorWindow = activeWindow != null && !windowsToRemove.contains(activeWindow)
+                    ? activeWindow : null;
+            var focused = anchorWindow != null ? anchorWindow.getFocusedComponent() : null;
+            if (focused != null) {
+                var caretCell = focused.getCursorCell();
+                if (caretCell != null) {
+                    screen.setCursorAnchor(caretCell);
+                }
+            }
             if (forceComplete) {
                 screen.refresh(io.jterm.screen.RefreshType.COMPLETE);
                 forceComplete = false;

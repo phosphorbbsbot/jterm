@@ -55,6 +55,9 @@ public class TextBox extends AbstractComponent {
         return maxLength <= 0 || value.length() + n <= maxLength;
     }
     private volatile int cursorPosition = 0;
+
+    /** CURSOR-ANCHOR LAW: absolute caret cell recorded during the last focused draw. */
+    private volatile io.jterm.core.TerminalPosition recordedCursorCell;
     private volatile int viewportOffset = 0;
     private volatile int preferredColumns = 20;
     private volatile boolean masked = false;
@@ -292,8 +295,24 @@ public class TextBox extends AbstractComponent {
                 // so we invert the colors explicitly. Every terminal supports
                 // explicit fg/bg color codes.
                 graphics.setCell(cursorCol, 0, new TextCell(c, bg, theme.foreground()));
+                // CURSOR-ANCHOR LAW (2026-11-13): report the ABSOLUTE caret cell
+                // while focused, so the gui can park the terminal cursor ON this
+                // cell — clients that draw their own cursor then render it on
+                // the caret character, never beside it.
+                var origin = graphics.absoluteOrigin();
+                recordedCursorCell = new io.jterm.core.TerminalPosition(
+                        origin.column() + cursorCol, origin.row());
+            } else {
+                recordedCursorCell = null;
             }
+        } else {
+            recordedCursorCell = null;
         }
+    }
+
+    @Override
+    public io.jterm.core.TerminalPosition getCursorCell() {
+        return recordedCursorCell;
     }
 
     /**

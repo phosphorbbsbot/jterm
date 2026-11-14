@@ -277,6 +277,18 @@ public class DefaultScreen implements Screen {
                 terminal.flush();
             }
         }
+        // CURSOR-ANCHOR LAW (2026-11-13): after the frame's cells — complete,
+        // row-shift, or delta — park the terminal cursor ON the focused text
+        // widget's caret cell. Without this, the cursor rests one cell past
+        // the LAST WRITTEN cell (that is just where the diff write stops),
+        // so clients that draw their own cursor render it beside the
+        // application caret — "the cursor is never on a character; text
+        // looks like it slides under it". No anchor → legacy behavior.
+        var anchor = cursorAnchor;
+        if (anchor != null) {
+            terminal.setCursorPosition(anchor.column(), anchor.row());
+            terminal.flush();
+        }
         frontBuffer.copyFrom(backBuffer);
     }
 
@@ -480,6 +492,19 @@ public class DefaultScreen implements Screen {
     @Override
     public void setCursorPosition(TerminalPosition position) {
         this.cursorPosition = position;
+    }
+
+    /** CURSOR-ANCHOR LAW: cell the terminal cursor must park on at frame end, or null. */
+    private volatile TerminalPosition cursorAnchor;
+
+    @Override
+    public void setCursorAnchor(TerminalPosition position) {
+        this.cursorAnchor = position;
+    }
+
+    @Override
+    public TerminalPosition getCursorAnchor() {
+        return cursorAnchor;
     }
 
     /**

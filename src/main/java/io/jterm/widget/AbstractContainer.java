@@ -35,6 +35,26 @@ public abstract class AbstractContainer extends AbstractComponent implements Con
     @Override
     public List<Component> getChildren() { return new ArrayList<>(children); }
 
+    /**
+     * CURSOR-ANCHOR LAW forwarding: containers report the caret cell of their
+     * first child that has one, so a focused PANEL wrapping a text widget
+     * (the common dialog structure — the window focuses the root panel)
+     * still surfaces the widget's caret to the gui. Unfocused text widgets
+     * report null, so only the focused one wins.
+     *
+     * @return the caret cell of the first reporting child, or null
+     */
+    @Override
+    public io.jterm.core.TerminalPosition getCursorCell() {
+        for (Component child : children) {
+            var cell = child.getCursorCell();
+            if (cell != null) {
+                return cell;
+            }
+        }
+        return null;
+    }
+
     /** {@inheritDoc} */
     @Override
     public void addComponent(Component component) {

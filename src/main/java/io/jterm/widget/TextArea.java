@@ -79,6 +79,9 @@ public class TextArea extends AbstractComponent {
     }
     private volatile int cursorRow = 0;
     private volatile int cursorCol = 0;
+
+    /** CURSOR-ANCHOR LAW: absolute caret cell recorded during the last focused draw. */
+    private volatile io.jterm.core.TerminalPosition recordedCursorCell;
     private volatile int viewportRow = 0;   // vertical scroll offset (which text row is at top of viewport)
     private volatile int viewportCol = 0;   // horizontal scroll offset (which column is at left of viewport)
     private volatile int preferredColumns = 20;
@@ -324,8 +327,25 @@ public class TextArea extends AbstractComponent {
                 char c = cursorCol < line.length() ? line.charAt(cursorCol) : ' ';
                 graphics.setCell(cursorScreenCol, cursorScreenRow,
                         new TextCell(c, theme.selectionFg(), theme.selectionBg()));
+                // CURSOR-ANCHOR LAW (2026-11-13): report the ABSOLUTE caret cell
+                // while focused — the gui parks the terminal cursor ON it so
+                // client-side cursors render on the caret character, never
+                // beside it.
+                var origin = graphics.absoluteOrigin();
+                recordedCursorCell = new io.jterm.core.TerminalPosition(
+                        origin.column() + cursorScreenCol,
+                        origin.row() + cursorScreenRow);
+            } else {
+                recordedCursorCell = null;
             }
+        } else {
+            recordedCursorCell = null;
         }
+    }
+
+    @Override
+    public io.jterm.core.TerminalPosition getCursorCell() {
+        return recordedCursorCell;
     }
 
     // ── Key handling ──────────────────────────────────────────

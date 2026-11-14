@@ -48,6 +48,19 @@ public class SubTextGraphics extends TextGraphics {
     }
 
     /**
+     * CURSOR-ANCHOR LAW: absolute 0-based origin of this graphics context —
+     * the sum of every parent offset. Widgets report their caret cell relative
+     * to an absolute origin so the gui can park the terminal cursor on it.
+     *
+     * @return the absolute origin (column, row)
+     */
+    @Override
+    public TerminalPosition absoluteOrigin() {
+        TerminalPosition p = parent.absoluteOrigin();
+        return p.offset(x, y);
+    }
+
+    /**
      * Set a cell in the back buffer.
      *
      * @param x the x coordinate

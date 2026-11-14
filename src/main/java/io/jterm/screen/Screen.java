@@ -109,6 +109,29 @@ public interface Screen extends AutoCloseable {
     TerminalPosition getCursorPosition();
 
     /**
+     * CURSOR-ANCHOR LAW (2026-11-13): set the screen cell the terminal cursor
+     * must be parked on at the end of each emitted frame. {@code null} clears
+     * the anchor (no parking — legacy behavior: the cursor rests wherever the
+     * last cell write left it). Callers: the gui sets it from the focused text
+     * widget's caret every frame, so clients that draw their own cursor render
+     * it ON the caret character, never beside it.
+     *
+     * @param position the anchor cell (0-based), or null
+     */
+    default void setCursorAnchor(TerminalPosition position) {
+        // default: no-op — only backends with real terminal output park cursors
+    }
+
+    /**
+     * Returns the anchor cell set for the next frame, or null.
+     *
+     * @return the anchor position
+     */
+    default TerminalPosition getCursorAnchor() {
+        return null;
+    }
+
+    /**
      * Closes the screen, stopping it and closing the underlying terminal.
      *
      * @throws IOException if an I/O error occurs

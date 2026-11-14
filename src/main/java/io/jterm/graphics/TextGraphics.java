@@ -25,6 +25,16 @@ public class TextGraphics {
     }
 
     /**
+     * CURSOR-ANCHOR LAW: absolute 0-based origin of this graphics context.
+     * The base graphics starts at (0,0); sub-graphics add their offsets.
+     *
+     * @return the absolute origin (column, row)
+     */
+    public TerminalPosition absoluteOrigin() {
+        return TerminalPosition.TOP_LEFT;
+    }
+
+    /**
      * Returns the size of the drawing area.
      *
      * @return the buffer dimensions

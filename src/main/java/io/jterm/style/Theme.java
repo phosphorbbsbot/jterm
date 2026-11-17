@@ -91,11 +91,11 @@ public record Theme(
             AnsiColor.BLACK,
             AnsiColor.BRIGHT_GREEN,
             AnsiColor.GREEN,
-            AnsiColor.BRIGHT_GREEN,
-            AnsiColor.BLACK,
+            AnsiColor.BLACK,               // titleFg — black caps on the green band
+            AnsiColor.GREEN,               // titleBg — green lintel (must read, not vanish)
             AnsiColor.BRIGHT_CYAN,
-            AnsiColor.BRIGHT_GREEN,
-            AnsiColor.BLACK
+            AnsiColor.BLACK,               // headerFg
+            AnsiColor.GREEN                // headerBg
     );
 
     /** Light green terminal: dark text on green background. */
@@ -108,10 +108,10 @@ public record Theme(
             AnsiColor.BLACK,
             AnsiColor.BLACK,
             AnsiColor.BLACK,
-            AnsiColor.BRIGHT_GREEN,
+            AnsiColor.WHITE,               // titleBg — white strip lintel (band != screen)
             AnsiColor.BLACK,
             AnsiColor.BLACK,
-            AnsiColor.BRIGHT_GREEN
+            AnsiColor.WHITE                // headerBg
     );
 
     /** Inferno: bright yellow/orange text on red background. */
@@ -123,11 +123,11 @@ public record Theme(
             AnsiColor.BLACK,               // focusFg
             AnsiColor.BRIGHT_YELLOW,       // focusBg
             AnsiColor.BRIGHT_RED,          // border
-            AnsiColor.BRIGHT_YELLOW,       // titleFg
-            AnsiColor.RED,                 // titleBg
+            AnsiColor.BLACK,               // titleFg — black caps on the ember band
+            AnsiColor.BRIGHT_RED,          // titleBg — raised ember band
             AnsiColor.YELLOW,              // accent
-            AnsiColor.BRIGHT_YELLOW,       // headerFg
-            AnsiColor.RED                  // headerBg
+            AnsiColor.BLACK,               // headerFg
+            AnsiColor.BRIGHT_RED           // headerBg
     );
 
     /** Classic PC BBS: bright cyan on blue (Turbo Vision / PCBoard look). */
@@ -139,11 +139,11 @@ public record Theme(
             AnsiColor.BLACK,               // focusFg
             AnsiColor.BRIGHT_CYAN,         // focusBg
             AnsiColor.BRIGHT_CYAN,         // border
-            AnsiColor.BRIGHT_WHITE,        // titleFg
-            AnsiColor.BLUE,                // titleBg
+            AnsiColor.BLACK,               // titleFg — black caps on the cyan band
+            AnsiColor.BRIGHT_CYAN,         // titleBg — TurboVision title band
             AnsiColor.BRIGHT_YELLOW,       // accent
-            AnsiColor.BRIGHT_WHITE,        // headerFg
-            AnsiColor.BLUE                 // headerBg
+            AnsiColor.BLACK,               // headerFg
+            AnsiColor.BRIGHT_CYAN          // headerBg
     );
 
     /** Cyberpunk: neon magenta/cyan on near-black. */
@@ -155,11 +155,11 @@ public record Theme(
             AnsiColor.BRIGHT_CYAN,         // focusFg
             AnsiColor.BLACK,               // focusBg
             AnsiColor.BRIGHT_MAGENTA,      // border
-            AnsiColor.BRIGHT_CYAN,         // titleFg
-            AnsiColor.BLACK,               // titleBg
+            AnsiColor.BLACK,               // titleFg — black caps on the neon magenta lintel
+            AnsiColor.BRIGHT_MAGENTA,      // titleBg
             AnsiColor.BRIGHT_GREEN,        // accent
-            AnsiColor.BRIGHT_CYAN,         // headerFg
-            AnsiColor.BLACK                // headerBg
+            AnsiColor.BLACK,               // headerFg
+            AnsiColor.BRIGHT_MAGENTA       // headerBg
     );
 
     /** Amber CRT: bright yellow reads as amber (P3 phosphor) on black. Twin of the green-on-black terminal look. */
@@ -171,16 +171,18 @@ public record Theme(
             AnsiColor.BLACK,               // focusFg
             AnsiColor.BRIGHT_YELLOW,       // focusBg
             AnsiColor.YELLOW,              // border
-            AnsiColor.BRIGHT_YELLOW,       // titleFg
-            AnsiColor.BLACK,               // titleBg
+            AnsiColor.BLACK,               // titleFg — black caps on the amber band
+            AnsiColor.YELLOW,              // titleBg — amber lintel
             AnsiColor.BRIGHT_GREEN,        // accent
-            AnsiColor.BRIGHT_YELLOW,       // headerFg
-            AnsiColor.BLACK                // headerBg
+            AnsiColor.BLACK,               // headerFg
+            AnsiColor.YELLOW               // headerBg
     );
 
     /**
      * Art Deco: cream text on deep charcoal with gold accents — the gilded
-     * lounge / black-lacquer-and-brass look. Borders and titles are gold;
+     * lounge / black-lacquer-and-brass look. Borders and titles are gold; the
+     * title/header bands are the brass lintel (muted gold band, black caps —
+     * the band must read against the lacquer ground, never vanish into it);
      * body text is bright white reading as cream against the dark ground.
      */
     public static final Theme ART_DECO = new Theme(
@@ -191,11 +193,11 @@ public record Theme(
             AnsiColor.BLACK,               // focusFg
             AnsiColor.BRIGHT_YELLOW,       // focusBg — gold focus
             AnsiColor.YELLOW,              // border — muted gold frame
-            AnsiColor.BRIGHT_YELLOW,       // titleFg — gold titles
-            AnsiColor.BLACK,               // titleBg
+            AnsiColor.BLACK,               // titleFg — black caps on the brass band
+            AnsiColor.YELLOW,              // titleBg — brass lintel
             AnsiColor.BRIGHT_YELLOW,       // accent — gold
-            AnsiColor.BRIGHT_YELLOW,       // headerFg — gold headers
-            AnsiColor.BLACK                // headerBg
+            AnsiColor.BLACK,               // headerFg — black caps on brass
+            AnsiColor.YELLOW               // headerBg — brass band
     );
 
     /** Paper: black on white — the daylight/high-ambient-light extreme. */
@@ -207,10 +209,10 @@ public record Theme(
             AnsiColor.WHITE,               // focusFg
             AnsiColor.BLACK,               // focusBg
             AnsiColor.BRIGHT_BLACK,        // border
-            AnsiColor.BLACK,               // titleFg
-            AnsiColor.WHITE,               // titleBg
+            AnsiColor.BLACK,               // titleFg — black caps on the grey band
+            AnsiColor.BRIGHT_BLACK,        // titleBg — grey lintel (band != paper)
             AnsiColor.BLUE,                // accent
-            AnsiColor.BLACK,               // headerFg
+            AnsiColor.BLACK,               // headerFg — black caps on grey
             AnsiColor.BRIGHT_BLACK         // headerBg
     );
 

@@ -55,11 +55,25 @@ class ThemeTest {
         assertEquals(AnsiColor.BRIGHT_WHITE, t.foreground());
         assertEquals(AnsiColor.BLACK, t.background());
         assertEquals(AnsiColor.BRIGHT_YELLOW, t.selectionBg());
-        assertEquals(AnsiColor.BRIGHT_YELLOW, t.titleFg());
-        assertEquals(AnsiColor.BRIGHT_YELLOW, t.headerFg());
+        assertEquals(AnsiColor.BLACK, t.titleFg());
+        assertEquals(AnsiColor.BLACK, t.headerFg());
         assertEquals(AnsiColor.YELLOW, t.border());
-        assertEquals(AnsiColor.BLACK, t.titleBg());
-        assertEquals(AnsiColor.BLACK, t.headerBg());
+        assertEquals(AnsiColor.YELLOW, t.titleBg());
+        assertEquals(AnsiColor.YELLOW, t.headerBg());
+    }
+
+    /** The 2026-11-17 regression: ART_DECO painted title/header bands BLACK on a
+     *  BLACK ground — every window title bar vanished. Law: a built-in theme's
+     *  title and header band colors must VISIBLY EXIST, i.e. never repeat the
+     *  terminal background. The band is the window's lintel; it must read. */
+    @Test
+    void builtInTitleAndHeaderBandsContrastTheBackground() {
+        for (Theme t : Theme.BUILT_IN) {
+            assertNotEquals(t.background(), t.titleBg(),
+                t + " title band invisible (titleBg == background)");
+            assertNotEquals(t.background(), t.headerBg(),
+                t + " header band invisible (headerBg == background)");
+        }
     }
 
     @Test

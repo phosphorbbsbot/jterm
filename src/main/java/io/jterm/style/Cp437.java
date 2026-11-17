@@ -62,7 +62,7 @@ public final class Cp437 {
         put('╙', (byte) 0xD0);  // single→double up-right
         put('╜', (byte) 0xD9);  // single→double up-left
         put('╫', (byte) 0xD5);  // single→double cross (vertical)
-        put('╨', (byte) 0xCF);  // single→double cross (horizontal)
+        put('╧', (byte) 0xCF);  // single→double up (horizontal) — was wrongly double-keyed '╨', which already sits at 0xC1
 
         // Block elements / shade characters (CP437)
         put('░', (byte) 0xB0);  // light shade

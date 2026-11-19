@@ -116,7 +116,9 @@ public record Theme(
 
     /** Inferno: bright yellow/orange text on red background. */
     public static final Theme YELLOW_ON_RED = new Theme(
-            AnsiColor.BRIGHT_YELLOW,       // foreground
+            new RgbColor(255, 200, 40),    // foreground — true ember gold (Joe 2026-11-19:
+                                           //   BRIGHT_YELLOW #FFFF55 reads as WHITE on
+                                           //   his panel; the palette's deep slot is brown)
             AnsiColor.RED,                 // background
             AnsiColor.RED,                 // selectionFg
             AnsiColor.BRIGHT_YELLOW,       // selectionBg

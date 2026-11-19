@@ -41,7 +41,9 @@ class ThemeTest {
     @Test
     void yellowOnRedThemeHasExpectedColors() {
         var t = Theme.YELLOW_ON_RED;
-        assertEquals(AnsiColor.BRIGHT_YELLOW, t.foreground());
+        // Joe 2026-11-19: true ember gold — the ANSI bright-yellow slot (255,255,85)
+        // renders white-ish on modern panels; the deep palette slot is brown.
+        assertEquals(new RgbColor(255, 200, 40), t.foreground());
         assertEquals(AnsiColor.RED, t.background());
         assertEquals(AnsiColor.RED, t.selectionFg());
         assertEquals(AnsiColor.BRIGHT_YELLOW, t.selectionBg());

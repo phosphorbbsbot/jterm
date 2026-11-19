@@ -61,6 +61,15 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
     private static final int COALESCE_MAX_KEYS = 32;
 
     /**
+     * GUI-FAULT breaker (Joe 2026-11-19): the event loop stops after this many
+     * faults with no successful iteration between. A permanently failing paint
+     * (closed SSH channel) used to spin the loop — bbs.log grew 1 GB in 30
+     * minutes at ~80 repaints/sec. 12 fails ≈ 150 ms of consecutive failures;
+     * a transient fault never reaches that without the loop truly wedged.
+     */
+    public static final int MAX_CONSECUTIVE_FAULTS = 12;
+
+    /**
      * Create a GUI backed by the given screen.
      *
      * @param screen the screen to render to
@@ -530,6 +539,11 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
      */
     public void runEventLoop() throws IOException {
         needsRefresh = true;
+        int consecutiveFaults = 0; // GUI-FAULT BREAKER (Joe 2026-11-19): a dead
+        // output (SSH channel closed) threw + repainted forever — bbs.log grew
+        // 1 GB in 30 min. N faults in a row with no successful iteration in
+        // between means the loop CANNOT make progress: stop, log, get out.
+        final int maxConsecutiveFaults = MAX_CONSECUTIVE_FAULTS;
         while (running) {
             boolean hadInput = false;
             try {
@@ -551,13 +565,31 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
                     checkAutoRefresh();
                     updateScreen();
                 }
+                consecutiveFaults = 0; // a clean iteration resets the breaker
             } catch (RuntimeException | IOException e) {
                 // A fault in a key handler or a paint must never kill the loop:
                 // the loop dying tears the session down (clients see a blank
                 // terminal). Log and keep serving input.
-                java.util.logging.Logger.getLogger(DefaultTextGUI.class.getName())
-                        .log(java.util.logging.Level.SEVERE,
-                                "[GUI-LOOP] recovered from fault", e);
+                consecutiveFaults++;
+                if (consecutiveFaults == 1
+                        || consecutiveFaults == maxConsecutiveFaults - 2) {
+                    java.util.logging.Logger.getLogger(DefaultTextGUI.class.getName())
+                            .log(java.util.logging.Level.SEVERE,
+                                    "[GUI-LOOP] recovered from fault (streak " + consecutiveFaults + ")", e);
+                }
+                if (consecutiveFaults >= maxConsecutiveFaults) {
+                    // BREAKER: repeatedly identical failure between successful
+                    // iterations = the loop cannot progress (typically the
+                    // output sink died and every repaint throws). Tear the
+                    // loop down the normal way — the session cleanup that runs
+                    // when runEventLoop() returns handles the rest.
+                    java.util.logging.Logger.getLogger(DefaultTextGUI.class.getName())
+                            .log(java.util.logging.Level.WARNING,
+                                    "[GUI-LOOP] event loop stopped after " + consecutiveFaults
+                                            + " consecutive faults; last fault: " + e);
+                    stopRunning();
+                    break;
+                }
             }
             // No more Thread.sleep(16) — getInput() now uses pollInput(1ms)
             // which blocks efficiently and returns as soon as input arrives.

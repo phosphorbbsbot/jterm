@@ -191,9 +191,11 @@ public record Theme(
             AnsiColor.BRIGHT_WHITE,        // foreground — cream body text
             AnsiColor.BLACK,               // background — deep charcoal
             AnsiColor.BLACK,               // selectionFg
-            AnsiColor.BRIGHT_YELLOW,       // selectionBg — gold highlight
+            new RgbColor(255, 214, 71),    // selectionBg — truecolor gold bar
+                                           // (Joe 2026-11-19: SGR-103 bright-bg
+                                           // class ghosts in SyncTERM; ride 48;2)
             AnsiColor.BLACK,               // focusFg
-            AnsiColor.BRIGHT_YELLOW,       // focusBg — gold focus
+            new RgbColor(255, 214, 71),    // focusBg — truecolor gold focus
             AnsiColor.YELLOW,              // border — muted gold frame
             AnsiColor.BLACK,               // titleFg — black caps on the brass band
             AnsiColor.YELLOW,              // titleBg — brass lintel

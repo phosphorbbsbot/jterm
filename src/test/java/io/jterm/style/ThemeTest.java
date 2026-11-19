@@ -56,7 +56,7 @@ class ThemeTest {
         var t = Theme.ART_DECO;
         assertEquals(AnsiColor.BRIGHT_WHITE, t.foreground());
         assertEquals(AnsiColor.BLACK, t.background());
-        assertEquals(AnsiColor.BRIGHT_YELLOW, t.selectionBg());
+        assertEquals(new RgbColor(255, 214, 71), t.selectionBg()); // truecolor gold bar (SyncTERM ghost law, 2026-11-19)
         assertEquals(AnsiColor.BLACK, t.titleFg());
         assertEquals(AnsiColor.BLACK, t.headerFg());
         assertEquals(AnsiColor.YELLOW, t.border());
@@ -157,5 +157,25 @@ class ThemeTest {
         ThemeManager.removeListener(listener);
         ThemeManager.setActive(Theme.DARK);
         assertEquals(1, count.get()); // not incremented after removal
+    }
+
+    // ── Truecolor band law (Joe 2026-11-19: ART_DECO selection ghosted in
+    //    SyncTERM — clients dim or drop the 16-color BRIGHT-bg SGR class,
+    //    SGR 100-107) ────────────────────────────────────────────────────
+    // The selection/focus bands must ride the 24-bit class (48;2;R;G;B on
+    // the wire) rather than a BRIGHT_* AnsiColor background, so every
+    // client — including SyncTERM — paints the bar bright with dark text.
+
+    @Test
+    void artDecoSelectionBandIsTruecolorNotBrightBgClass() {
+        var t = Theme.ART_DECO;
+        assertInstanceOf(RgbColor.class, t.selectionBg());
+        assertInstanceOf(RgbColor.class, t.focusBg());
+        // dark text on the band, as Joe specified
+        assertEquals(AnsiColor.BLACK, t.selectionFg());
+        // and the actual wire sequence is the truecolor form (48;2;R;G;B)
+        assertTrue(new String(t.selectionBg().bgSequence()).startsWith("48;2;"),
+                "selection bg must ride the 24-bit class, not SGR 100-107");
+        assertTrue(new String(t.focusBg().bgSequence()).startsWith("48;2;"));
     }
 }

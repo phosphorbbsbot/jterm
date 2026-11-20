@@ -44,7 +44,7 @@ public class AnimatedBackgroundWindow extends WindowImpl {
      * @param gui         the GUI this window belongs to
      */
     public AnimatedBackgroundWindow(AnimatedBackground background, TextGUI gui) {
-        this(background, gui, true);
+        this(background, gui, true, false);
     }
 
     /**
@@ -57,10 +57,30 @@ public class AnimatedBackgroundWindow extends WindowImpl {
      * @param fullscreen true for a fullscreen background window, false to set bounds manually
      */
     public AnimatedBackgroundWindow(AnimatedBackground background, TextGUI gui, boolean fullscreen) {
+        this(background, gui, fullscreen, false);
+    }
+
+    /**
+     * Full constructor. The 2/3-arg ctors keep the pre-ambient-card behavior —
+     * the timer runs at the background's target fps regardless of sync
+     * capability (login/lock screens and every existing consumer).
+     * Menu ambient scenes (card t_a9be4757) construct with
+     * {@code degradeWithoutSync=true} to get the SYNCHRONIZED-OUTPUT DEGRADE
+     * LAW: without 2026 sync the timer caps at {@link #NO_SYNC_FPS_CAP} fps
+     * (unbracketed full-frame repaints read as flicker on slow renderers).
+     *
+     * @param background          the animation to render
+     * @param gui                 the GUI this window belongs to
+     * @param fullscreen          true for a fullscreen background window, false to set bounds manually
+     * @param degradeWithoutSync  true caps the timer fps on non-2026 terminals
+     */
+    public AnimatedBackgroundWindow(AnimatedBackground background, TextGUI gui, boolean fullscreen,
+                                    boolean degradeWithoutSync) {
         super("animation-bg");
         this.background = background;
         this.gui = gui;
         this.fullscreen = fullscreen;
+        this.degradeWithoutSync = degradeWithoutSync;
         if (fullscreen) {
             setHints(List.of(WindowHint.FULLSCREEN, WindowHint.NO_DECORATIONS, WindowHint.BACKGROUND));
         } else {
@@ -68,6 +88,9 @@ public class AnimatedBackgroundWindow extends WindowImpl {
         }
         getContents().setLayoutManager(null);
     }
+
+    /** Menu ambient opt-in: cap the timer fps without 2026 sync. */
+    private final boolean degradeWithoutSync;
 
     /**
      * Blits the cached animation frame to the GUI's graphics context.
@@ -194,13 +217,16 @@ public class AnimatedBackgroundWindow extends WindowImpl {
 
     /**
      * The fps the timer actually runs at: the background's target rate on a
-     * 2026-sync-capable terminal, capped when the terminal lacks it.
+     * 2026-sync-capable terminal. Without 2026 sync the rate caps ONLY for
+     * windows that opted into the degrade ({@code degradeWithoutSync=true} —
+     * the menu ambient scenes); every other consumer (login/lock screens)
+     * keeps the pre-card behavior.
      *
      * @return the effective timer fps, at least 1
      */
     int effectiveFps() {
         int target = background.targetFps();
-        if (supportsSynchronizedOutput()) {
+        if (!degradeWithoutSync || supportsSynchronizedOutput()) {
             return target;
         }
         return Math.min(target, Math.max(1, NO_SYNC_FPS_CAP));

@@ -192,6 +192,27 @@ public interface Terminal extends AutoCloseable {
     default void setSyncOutputSupported(boolean supported) {}
 
     /**
+     * Returns this terminal's declared color depth. The default is
+     * {@link ColorDepth#TRUECOLOR} — the null law: a terminal whose depth
+     * was never declared renders truecolor bytes, exactly as before the
+     * color-depth gate existed, so unknown is never a degradation.
+     *
+     * @return the terminal's color depth, TRUECOLOR by default
+     */
+    default ColorDepth colorDepth() {
+        return ColorDepth.TRUECOLOR;
+    }
+
+    /**
+     * Sets this terminal's declared color depth. The default implementation
+     * is a no-op — only tiers that capture a real depth verdict carry the
+     * flag (MockTerminal and SocketTerminal; mirrors the sync-output flag).
+     *
+     * @param depth the declared depth; never null
+     */
+    default void setColorDepth(ColorDepth depth) {}
+
+    /**
      * Write raw bytes directly to the terminal output.
      *
      * @param data the raw bytes to write

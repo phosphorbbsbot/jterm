@@ -1,10 +1,13 @@
 package io.jterm.screen;
 
+import io.jterm.core.ColorDepth;
 import io.jterm.core.Terminal;
 import io.jterm.core.TerminalPosition;
 import io.jterm.core.TerminalSize;
 import io.jterm.style.AnsiColor;
 import io.jterm.style.AnsiCodes;
+import io.jterm.style.IndexedColor;
+import io.jterm.style.RgbColor;
 import io.jterm.style.SGR;
 import io.jterm.style.TextCell;
 import io.jterm.style.Color;
@@ -24,8 +27,10 @@ public class DefaultScreen implements Screen {
     private volatile TerminalPosition cursorPosition = TerminalPosition.TOP_LEFT;
     private volatile boolean started;
     /** Persistent SGR state tracker — survives across refresh calls so
-     *  delta refreshes know the terminal's actual current SGR state. */
-    private final SgrStateTracker sgrState = new SgrStateTracker();
+     *  delta refreshes know the terminal's actual current SGR state. The
+     *  tracker re-reads the terminal's declared color depth on every
+     *  transition and degrades RgbColor paints to the declared tier. */
+    private final SgrStateTracker sgrState;
     /** True while a BEGIN_SYNC_UPDATE (DEC 2026) bracket is open on the terminal. */
     private volatile boolean syncBracketActive = false;
 
@@ -69,6 +74,7 @@ public class DefaultScreen implements Screen {
      */
     public DefaultScreen(Terminal terminal) {
         this.terminal = terminal;
+        this.sgrState = new SgrStateTracker(() -> terminal.colorDepth());
         try {
             this.size = terminal.getTerminalSize();
         } catch (IOException e) {
@@ -522,14 +528,66 @@ public class DefaultScreen implements Screen {
         private Color currentFg = AnsiColor.DEFAULT;
         private Color currentBg = AnsiColor.DEFAULT;
         private final EnumSet<SGR> currentMods = EnumSet.noneOf(SGR.class);
+        /** The terminal tier's declared depth, re-read on every transition so a
+         *  mid-session declare applies at the next paint (depth gate). */
+        private final java.util.function.Supplier<ColorDepth> depth;
+        private static final java.util.function.Supplier<ColorDepth> TRUECOLOR_ALWAYS =
+                () -> ColorDepth.TRUECOLOR;
+
+        /** Tracker for callers that own no terminal: always the byte-identical
+         *  truecolor path (the null law — unknown depth is never a degradation). */
+        SgrStateTracker() {
+            this(TRUECOLOR_ALWAYS);
+        }
+
+        /**
+         * Tracker that consults the terminal's declared depth on every
+         * {@link #transitionTo(TextCell)}.
+         *
+         * @param depth the depth supplier; never null
+         */
+        SgrStateTracker(java.util.function.Supplier<ColorDepth> depth) {
+            if (depth == null) {
+                throw new IllegalArgumentException("depth supplier must not be null");
+            }
+            this.depth = depth;
+        }
+
+        /**
+         * Degrades a target color to the terminal's declared tier before any
+         * SGR emission. The degradation rides {@code IndexedColor.fromRgb}
+         * (nearest xterm-256 palette index: 6×6×6 cube + grayscale law) for
+         * C256 and {@code AnsiColor.nearest} (nearest ANSI-16 palette entry)
+         * for ANSI16; TRUECOLOR is the byte-identical identity. Colors the
+         * screen layer already painted per-depth (AnsiColor, IndexedColor)
+         * and API-legal nulls pass through untouched.
+         *
+         * @param color the target color to map, possibly null
+         * @param depthTo the terminal tier to degrade to
+         * @return the color the terminal should be told about, null-safe
+         */
+        static Color degradeForDepth(Color color, ColorDepth depthTo) {
+            if (depthTo == ColorDepth.TRUECOLOR || !(color instanceof RgbColor rgb)) {
+                return color;
+            }
+            return depthTo == ColorDepth.C256
+                    ? IndexedColor.fromRgb(rgb.r(), rgb.g(), rgb.b())
+                    : AnsiColor.nearest(rgb.r(), rgb.g(), rgb.b());
+        }
 
         byte[] transitionTo(TextCell target) {
+            var depthNow = depth.get();
+            Color mappedFg = degradeForDepth(target.fg(), depthNow);
+            Color mappedBg = degradeForDepth(target.bg(), depthNow);
+
             // Optimization + correctness: when target is fully default (no fg/bg/modifiers),
             // emit a single SGR reset rather than individual sequences. This avoids the
             // "stuck background" bug where some terminals don't properly interpret
-            // \033[49m (default bg) when preceded by other partial resets.
-            boolean targetIsDefault = target.fg() == AnsiColor.DEFAULT
-                    && target.bg() == AnsiColor.DEFAULT
+            // \033[49m (default bg) when preceded by other partial resets. The check
+            // rides the MAPPED colors, so a degraded cell collapses exactly like the
+            // truecolor original.
+            boolean targetIsDefault = mappedFg == AnsiColor.DEFAULT
+                    && mappedBg == AnsiColor.DEFAULT
                     && target.modifiers().isEmpty();
             if (targetIsDefault && (!currentFg.equals(AnsiColor.DEFAULT)
                     || !currentBg.equals(AnsiColor.DEFAULT)
@@ -546,15 +604,17 @@ public class DefaultScreen implements Screen {
 
             // Null fg/bg are API-legal ("transparent" — Label(text, fg, null) stores
             // a null-bg TextCell); the diff tracker must skip, never NPE: unchanged
-            // current state carries on to the next cell.
-            if (target.fg() != null && !target.fg().equals(currentFg)) {
-                sb.append(AnsiCodes.CSI).append(new String(target.fg().fgSequence(), StandardCharsets.UTF_8)).append("m");
-                currentFg = target.fg();
+            // current state carries on to the next cell. The comparison is against
+            // the MAPPED current state, so two distinct RgbColors that map to the
+            // same index emit zero redundant sequences.
+            if (mappedFg != null && !mappedFg.equals(currentFg)) {
+                sb.append(AnsiCodes.CSI).append(new String(mappedFg.fgSequence(), StandardCharsets.UTF_8)).append("m");
+                currentFg = mappedFg;
                 changed = true;
             }
-            if (target.bg() != null && !target.bg().equals(currentBg)) {
-                sb.append(AnsiCodes.CSI).append(new String(target.bg().bgSequence(), StandardCharsets.UTF_8)).append("m");
-                currentBg = target.bg();
+            if (mappedBg != null && !mappedBg.equals(currentBg)) {
+                sb.append(AnsiCodes.CSI).append(new String(mappedBg.bgSequence(), StandardCharsets.UTF_8)).append("m");
+                currentBg = mappedBg;
                 changed = true;
             }
             for (SGR mod : target.modifiers()) {
@@ -579,7 +639,9 @@ public class DefaultScreen implements Screen {
             // colors to default when processing SGR disable sequences (e.g.
             // ESC[27m for REVERSE off, ESC[22m for BOLD off). After disabling
             // a modifier, re-emit the current fg and bg so the terminal
-            // restores the correct colors for subsequent cells.
+            // restores the correct colors for subsequent cells. The current
+            // state is already MAPPED, so the re-emit degenerates on the
+            // declared tier too (never a 38;2 byte below TRUECOLOR).
             if (anyModDisabled) {
                 sb.append(AnsiCodes.CSI).append(new String(currentFg.fgSequence(), StandardCharsets.UTF_8)).append("m");
                 sb.append(AnsiCodes.CSI).append(new String(currentBg.bgSequence(), StandardCharsets.UTF_8)).append("m");

@@ -31,6 +31,7 @@ public class SocketTerminal implements Terminal {
     private volatile TerminalSize currentSize;
     private final List<TerminalResizeListener> resizeListeners = new CopyOnWriteArrayList<>();
     private volatile boolean cp437Mode = false;
+    private volatile ColorDepth colorDepth = ColorDepth.TRUECOLOR;
 
     // --- Blocking input pipeline ---
     // A dedicated reader thread blocks on the InputStream, decodes keystrokes
@@ -274,6 +275,33 @@ public class SocketTerminal implements Terminal {
      */
     public void setCp437Mode(boolean cp437Mode) {
         this.cp437Mode = cp437Mode;
+    }
+
+    /**
+     * Return the declared color depth of this connection.
+     *
+     * @return the declared depth, TRUECOLOR by default (the null law: a
+     *         never-declared connection renders truecolor bytes)
+     */
+    @Override
+    public ColorDepth colorDepth() {
+        return colorDepth;
+    }
+
+    /**
+     * Set the declared color depth of this connection (e.g. from a transport
+     * color probe). The screen layer reads this at every SGR emission and
+     * degrades RgbColor paints to the declared tier.
+     *
+     * @param depth the declared depth; never null
+     * @throws IllegalArgumentException if depth is null
+     */
+    @Override
+    public void setColorDepth(ColorDepth depth) {
+        if (depth == null) {
+            throw new IllegalArgumentException("color depth must not be null");
+        }
+        this.colorDepth = depth;
     }
 
     /**

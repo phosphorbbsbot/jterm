@@ -20,6 +20,7 @@ public class MockTerminal implements Terminal {
     private final StringBuilder output = new StringBuilder();
     private boolean closed;
     private boolean syncOutputSupported;
+    private ColorDepth colorDepth = ColorDepth.TRUECOLOR;
     private io.jterm.core.input.InputDecoder decoder;
 
     /**
@@ -280,6 +281,30 @@ public class MockTerminal implements Terminal {
     @Override
     public void setSyncOutputSupported(boolean supported) {
         this.syncOutputSupported = supported;
+    }
+
+    /**
+     * Return the declared color depth of this mock terminal.
+     *
+     * @return the declared depth, TRUECOLOR by default (the null law)
+     */
+    @Override
+    public ColorDepth colorDepth() {
+        return colorDepth;
+    }
+
+    /**
+     * Set the declared color depth of this mock terminal.
+     *
+     * @param depth the declared depth; never null
+     * @throws IllegalArgumentException if depth is null
+     */
+    @Override
+    public void setColorDepth(ColorDepth depth) {
+        if (depth == null) {
+            throw new IllegalArgumentException("color depth must not be null");
+        }
+        this.colorDepth = depth;
     }
 
     /**

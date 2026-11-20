@@ -24,7 +24,9 @@ import java.util.List;
  *   COUNT &lt;frames&gt;
  *   COLS &lt;c&gt; ROWS &lt;r&gt;
  *   FRAME &lt;dur_ms&gt;        (repeat to COUNT; optionally a SUBCELL line next)
- *   SUBCELL               (optional; reserved for the half-block card)
+ *   SUBCELL               (optional; marked frames play at 2× vertical
+ *                          density — the body's rows are sub-rows, replayed
+ *                          through the half-block buffer by AnsiFilmScreen)
  *   &lt;raw ANSI body&gt;       (SGR-only: truecolor 38;2/48;2 allowed)
  *   END
  * </pre>

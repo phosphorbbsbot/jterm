@@ -6,8 +6,11 @@ import io.jterm.core.TerminalSize;
 import io.jterm.core.input.KeyStroke;
 import io.jterm.core.input.KeyType;
 import io.jterm.screen.DefaultScreen;
+import io.jterm.screen.HalfBlockBuffer;
 import io.jterm.screen.ScreenBuffer;
 import io.jterm.style.AnsiCodes;
+import io.jterm.style.AnsiColor;
+import io.jterm.style.Color;
 import io.jterm.style.TextCell;
 import io.jterm.window.DefaultTextGUI;
 import io.jterm.window.TextGUI;
@@ -39,7 +42,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *       diffed against the previous frame's grid row-major, cursor repositioned
  *       only when the next changed cell is not contiguous, SGR transitions
  *       batched and depth-mapped by the tracker (colors ride the terminal's
- *       declared {@link io.jterm.core.ColorDepth}).</li>
+ *       declared {@link io.jterm.core.ColorDepth}). A frame whose grid SHAPE
+ *       differs from the previous one emits a full repaint instead (the delta
+ *       law cannot walk across a shape change; mixed packs rely on it —
+ *       the shape law is a row-count law: COLS is fixed by the film header
+ *       and the encode preserves width).</li>
+ *   <li><b>SUBCELL LAW</b> — a {@code SUBCELL}-marked frame's declared rows
+ *       are sub-rows: before emission the raster re-encodes through
+ *       {@link io.jterm.screen.HalfBlockBuffer} at the terminal's declared
+ *       depth (mapped BEFORE encode: a pair that degrades equal collapses to
+ *       the FULL BLOCK law inside the cell itself), so the frame plays at 2×
+ *       vertical density. The sub-cell color of a raster cell rides its
+ *       background when any ground is painted, else its foreground; a fully
+ *       default cell is transparent — a SUBCELL body is a color field.
+ *       Marked frames honor the internal {@code subcellCapable} seam: without
+ *       the half-block layer the marker plays normal, byte-identical to an
+ *       unmarked frame (tests: {@code AnsiFilmScreenSubcellTest}).</li>
  *   <li><b>2026 LAW</b> — every frame is wrapped in BEGIN/END_SYNC_UPDATE
  *       (DEC 2026) iff {@code terminal.syncOutputSupported()}; the ESU is also
  *       emitted on a mid-frame failure so the bracket never dangles, and the
@@ -85,6 +103,17 @@ public class AnsiFilmScreen extends WindowImpl {
     private static final byte[] ESU = AnsiCodes.END_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8);
     private static final byte[] AUTOWRAP_OFF = AnsiCodes.DISABLE_AUTOWRAP.getBytes(StandardCharsets.UTF_8);
     private static final byte[] AUTOWRAP_ON = AnsiCodes.ENABLE_AUTOWRAP.getBytes(StandardCharsets.UTF_8);
+
+    /**
+     * The SUBCELL capability seam (internal, package-private so the law tests
+     * can substitute it): a SUBCELL-marked frame replays through the
+     * half-block buffer only when the layer is present. True within this
+     * artifact ({@code HalfBlockBuffer} lives in {@code io.jterm.screen});
+     * the seam keeps marker frames playing normal in builds without it — the
+     * law that let the pfilm card land ahead of this one (2026-11-20
+     * animation plan, card 4).
+     */
+    static java.util.function.BooleanSupplier subcellCapable = () -> true;
 
     private final AnsiFilm film;
     private final TextGUI gui;
@@ -341,13 +370,14 @@ public class AnsiFilmScreen extends WindowImpl {
     // ── emission (the byte laws) ────────────────────────────────────────
 
     private void emitFrame(int index) throws IOException {
-        var target = film.frame(index).cells();
+        var frame = film.frame(index);
+        var target = targetFor(frame);
         boolean bracket = terminal.syncOutputSupported();
         if (bracket) {
             terminal.writeRaw(BSU);
         }
         try {
-            if (previousFrame == null) {
+            if (previousFrame == null || !sameRowCount(previousFrame, target)) {
                 emitComplete(target);
             } else {
                 emitDelta(target);
@@ -363,6 +393,66 @@ public class AnsiFilmScreen extends WindowImpl {
         terminal.flush();
         previousFrame = copyOf(target);
         lastEmitted = previousFrame;
+    }
+
+    /**
+     * The frame's emission target: a SUBCELL-marked frame with the capability
+     * present re-encodes its raster through the half-block buffer (the rows
+     * are SUB-ROWS, the rows*2 grid), mapping through the terminal's declared
+     * {@link io.jterm.core.ColorDepth} BEFORE encode; anything else plays
+     * exactly as parsed (frames lacking the marker are untouched).
+     */
+    private ScreenBuffer targetFor(AnsiFilm.Frame frame) {
+        if (frame.subcell() && subcellCapable.getAsBoolean()) {
+            return encodeSubcell(frame.cells());
+        }
+        return frame.cells();
+    }
+
+    /**
+     * Re-encodes a SUBCELL frame: the raster's rows are sub-rows of a
+     * {@code rows*2} grid, so the film's declared ROWS double its vertical
+     * density. Each raster cell's color rides the RASTER LAW below. An odd
+     * sub-row count keeps the trailing partnerless half transparent (the
+     * buffer's space-fill law).
+     */
+    private ScreenBuffer encodeSubcell(ScreenBuffer raster) {
+        var size = raster.size();
+        int cols = size.columns();
+        int subRows = size.rows();
+        var buf = HalfBlockBuffer.forSubRows(cols, subRows);
+        for (int sub = 0; sub < subRows; sub++) {
+            for (int c = 0; c < cols; c++) {
+                buf.setSubCell(c, sub, subCellColor(raster.getCell(c, sub)));
+            }
+        }
+        return buf.toScreenBuffer(terminal.colorDepth());
+    }
+
+    /**
+     * The SUBCELL raster law: a frame body is a COLOR FIELD. A painted cell's
+     * sub-cell color is its BACKGROUND when any ground is painted (the colored
+     * band), else its foreground (glyph-painted art); a fully default cell is
+     * transparent. Body glyphs carry no text of their own.
+     */
+    private static Color subCellColor(TextCell cell) {
+        Color bg = cell.bg();
+        if (!AnsiColor.DEFAULT.equals(bg)) {
+            return bg;
+        }
+        Color fg = cell.fg();
+        return AnsiColor.DEFAULT.equals(fg) ? null : fg;
+    }
+
+    /**
+     * True when the two emission targets share the grid SHAPE. Per-pack
+     * columns are fixed by the film header (one COLS for every frame) and the
+     * encode preserves width, so a shape change can only come from the row
+     * count (the SUBCELL encode halves odd-even pairs) — the law is a
+     * row-count law.
+     */
+    private static boolean sameRowCount(ScreenBuffer a, ScreenBuffer b) {
+        return a.size().rows() == b.size().rows();
     }
 
     private ScreenBuffer copyOf(ScreenBuffer from) {

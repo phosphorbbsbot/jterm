@@ -523,8 +523,19 @@ public class DefaultScreen implements Screen {
         return cursorPosition;
     }
 
-    /** Tracks current terminal SGR state and emits only delta transitions. */
-    static class SgrStateTracker {
+    /**
+     * Tracks current terminal SGR state and emits only delta transitions.
+     *
+     * <p>This is the library-level SGR DELTA engine: the film player
+     * ({@code io.jterm.ansifilm.AnsiFilmScreen}) drives it frame-by-frame the
+     * same way the screen refreshes do — per-cell {@link #transitionTo(TextCell)}
+     * against the MAPPED colors of the terminal's declared {@link ColorDepth},
+     * with the mapped comparisons collapsing redundant sequences and the
+     * single-reset shortcut for fully-default cells. Public since the 2026-11-20
+     * animation plan: playback emission lives outside this package by design
+     * (the film's per-frame bracket law is its own, not the screen's).</p>
+     */
+    public static class SgrStateTracker {
         private Color currentFg = AnsiColor.DEFAULT;
         private Color currentBg = AnsiColor.DEFAULT;
         private final EnumSet<SGR> currentMods = EnumSet.noneOf(SGR.class);
@@ -536,7 +547,7 @@ public class DefaultScreen implements Screen {
 
         /** Tracker for callers that own no terminal: always the byte-identical
          *  truecolor path (the null law — unknown depth is never a degradation). */
-        SgrStateTracker() {
+        public SgrStateTracker() {
             this(TRUECOLOR_ALWAYS);
         }
 
@@ -546,7 +557,7 @@ public class DefaultScreen implements Screen {
          *
          * @param depth the depth supplier; never null
          */
-        SgrStateTracker(java.util.function.Supplier<ColorDepth> depth) {
+        public SgrStateTracker(java.util.function.Supplier<ColorDepth> depth) {
             if (depth == null) {
                 throw new IllegalArgumentException("depth supplier must not be null");
             }
@@ -575,7 +586,14 @@ public class DefaultScreen implements Screen {
                     : AnsiColor.nearest(rgb.r(), rgb.g(), rgb.b());
         }
 
-        byte[] transitionTo(TextCell target) {
+        /**
+         * Emits the delta SGR bytes that move the terminal to the target cell's
+         * MAPPED state.
+         *
+         * @param target the cell the terminal must show next
+         * @return the transition bytes (empty when no SGR change is needed)
+         */
+        public byte[] transitionTo(TextCell target) {
             var depthNow = depth.get();
             Color mappedFg = degradeForDepth(target.fg(), depthNow);
             Color mappedBg = degradeForDepth(target.bg(), depthNow);
@@ -658,7 +676,13 @@ public class DefaultScreen implements Screen {
             return changed ? sb.toString().getBytes(StandardCharsets.UTF_8) : new byte[0];
         }
 
-        byte[] reset() {
+        /**
+         * Resets the tracked state to terminal defaults and returns the SGR
+         * reset bytes for the terminal.
+         *
+         * @return the reset bytes ({@code ESC[0m}), never null
+         */
+        public byte[] reset() {
             currentFg = AnsiColor.DEFAULT;
             currentBg = AnsiColor.DEFAULT;
             currentMods.clear();

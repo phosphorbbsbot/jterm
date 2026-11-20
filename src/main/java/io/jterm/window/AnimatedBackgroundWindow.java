@@ -26,7 +26,9 @@ import java.util.List;
  */
 public class AnimatedBackgroundWindow extends WindowImpl {
     private final AnimatedBackground background;
-    private AnimationTimer timer;
+    /** The frame timer. Package-private so same-package window subclasses
+     *  (DoorwayWindow's no-prerender start) can install their own. */
+    AnimationTimer timer;
     private final TextGUI gui;
     private final boolean fullscreen;
 
@@ -281,6 +283,12 @@ public class AnimatedBackgroundWindow extends WindowImpl {
      */
     public AnimatedBackground getBackground() {
         return background;
+    }
+
+    /** Package-private GUI accessor for same-package subclasses (the
+     *  doorway exit removes its own window on the event-loop thread). */
+    TextGUI hostedGui() {
+        return gui;
     }
 
     /**

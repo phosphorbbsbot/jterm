@@ -654,7 +654,8 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
         return null;
     }
 
-    private Window modalWindow() {
+    @Override
+    public Window modalWindow() {
         for (int i = windows.size() - 1; i >= 0; i--) {
             var w = windows.get(i);
             if (!windowsToRemove.contains(w) && w.getHints().contains(WindowHint.MODAL)) return w;

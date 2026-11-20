@@ -486,15 +486,19 @@ class AnimatedBackgroundWindowCoverageTest {
     class DrawWithGuiTests {
 
         @Test
-        @DisplayName("renderTick requests gui refresh when gui is set")
+        @DisplayName("a MOUNTED ambient window requests gui refresh on every renderTick")
         void renderTickRequestsGuiRefresh() {
-            // Create a stub GUI that tracks requestRefresh calls
+            // Create a stub GUI that tracks requestRefresh calls and holds a
+            // window list — renderTick's DETACHED-PAUSE law (card t_a9be4757)
+            // holds the frame for any ambient window not mounted on its GUI,
+            // so the refresh contract is asserted for a mounted window.
             var bg = new StubBackground();
             final int[] refreshCount = {0};
+            final java.util.List<Window> mounted = new java.util.ArrayList<>();
             TextGUI stubGui = new TextGUI() {
                 @Override public io.jterm.screen.Screen getScreen() { return null; }
-                @Override public void addWindow(Window w) {}
-                @Override public void removeWindow(Window w) {}
+                @Override public void addWindow(Window w) { mounted.add(w); }
+                @Override public void removeWindow(Window w) { mounted.remove(w); }
                 @Override public Window getActiveWindow() { return null; }
                 @Override public void setActiveWindow(Window w) {}
                 @Override public boolean processInput() { return false; }
@@ -502,11 +506,12 @@ class AnimatedBackgroundWindowCoverageTest {
                 @Override public void updateScreen() {}
                 @Override public void requestRefresh() { refreshCount[0]++; }
                 @Override public void close() {}
-                @Override public java.util.Collection<Window> getWindows() { return java.util.List.of(); }
+                @Override public java.util.Collection<Window> getWindows() { return mounted; }
             };
 
             var window = new AnimatedBackgroundWindow(bg, stubGui, true);
             window.setBounds(TerminalPosition.TOP_LEFT, SIZE_80x24);
+            stubGui.addWindow(window);
 
             window.start();
             try {

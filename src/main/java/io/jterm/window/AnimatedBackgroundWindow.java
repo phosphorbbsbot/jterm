@@ -34,6 +34,8 @@ public class AnimatedBackgroundWindow extends WindowImpl {
     private volatile ScreenBuffer frameBuffer;
     /** Size of the last rendered frame, so draw() can detect stale buffers. */
     private volatile TerminalSize frameSize;
+    /** Counter of refresh requests issued to the GUI (for the pause laws). */
+    private volatile int refreshRequests;
 
     /**
      * Create a fullscreen background window driven by the given animated background.
@@ -100,8 +102,23 @@ public class AnimatedBackgroundWindow extends WindowImpl {
      * buffer. Called by the {@link AnimationTimer} at the target FPS.
      * After rendering, requests a GUI refresh so {@link #draw} is called
      * to blit the new frame.
+     *
+     * <p>Package-private + pause-gated for the ambient laws (tests:
+     * {@code AmbientWindowLawsTest}):</p>
+     * <ul>
+     *   <li><b>OVERLAY-HOLD LAW</b> — while a MODAL window is on the GUI the
+     *       ambient holds: no tick, no frame change, no refresh request. The
+     *       modal paints over the scene, so keeping the animation under it
+     *       would churn repaints nobody sees.</li>
+     *   <li><b>DETACHED-PAUSE LAW</b> — an ambient window absent from its
+     *       GUI (evicted by a lock screen, detached session) never advances
+     *       again; eviction can never leave a ticking zombie behind.</li>
+     * </ul>
      */
-    private void renderTick() {
+    void renderTick() {
+        if (isPausedByGui()) {
+            return;
+        }
         var sz = getSize();
         if (sz.columns() <= 0 || sz.rows() <= 0) return;
         // (Re)allocate the off-screen buffer if the size changed
@@ -116,6 +133,7 @@ public class AnimatedBackgroundWindow extends WindowImpl {
         background.tick(System.nanoTime());
         background.renderFrame(g, sz);
         if (gui != null) {
+            refreshRequests++;
             gui.requestRefresh();
         }
     }
@@ -148,6 +166,14 @@ public class AnimatedBackgroundWindow extends WindowImpl {
 
     /**
      * Start the animation timer and pre-render initial frames.
+     *
+     * <p><b>SYNCHRONIZED-OUTPUT DEGRADE LAW</b> (ambient, card t_a9be4757):
+     * without 2026 synchronized output every frame is an unbracketed
+     * progressive paint — full-frame ambient repaints at the target rate
+     * read as flicker on slower renderers (the TickerTape full-row freeze
+     * lesson). The timer therefore caps at {@value #NO_SYNC_FPS_CAP} fps
+     * when the backing terminal does not declare 2026 sync, and runs at the
+     * ambient's own {@code targetFps} when it does.</p>
      */
     public void start() {
         background.start();
@@ -159,8 +185,57 @@ public class AnimatedBackgroundWindow extends WindowImpl {
         for (int i = 0; i < 5; i++) {
             renderTick();
         }
-        timer = new AnimationTimer(background.targetFps(), this::renderTick);
+        timer = new AnimationTimer(effectiveFps(), this::renderTick);
         timer.start();
+    }
+
+    /** Rate cap for terminals without 2026 synchronized output. */
+    static final int NO_SYNC_FPS_CAP = 2;
+
+    /**
+     * The fps the timer actually runs at: the background's target rate on a
+     * 2026-sync-capable terminal, capped when the terminal lacks it.
+     *
+     * @return the effective timer fps, at least 1
+     */
+    int effectiveFps() {
+        int target = background.targetFps();
+        if (supportsSynchronizedOutput()) {
+            return target;
+        }
+        return Math.min(target, Math.max(1, NO_SYNC_FPS_CAP));
+    }
+
+    private boolean supportsSynchronizedOutput() {
+        if (gui == null) {
+            return false;
+        }
+        if (gui.getScreen() instanceof io.jterm.screen.DefaultScreen ds) {
+            return ds.getTerminal().syncOutputSupported();
+        }
+        return false;
+    }
+
+    /**
+     * True when this ambient window must hold its frame: a MODAL window is
+     * active on the GUI (OVERLAY-HOLD) or the window is no longer mounted on
+     * its GUI (DETACHED-PAUSE). A null GUI never pauses (pure-library use).
+     *
+     * @return true while the ambient should hold
+     */
+    boolean isPausedByGui() {
+        if (gui == null) {
+            return false;
+        }
+        if (gui.modalWindow() != null) {
+            return true;
+        }
+        return !gui.getWindows().contains(this);
+    }
+
+    /** Visible for tests: refresh requests issued to the GUI (0 when paused). */
+    int refreshRequests() {
+        return refreshRequests;
     }
 
     /**

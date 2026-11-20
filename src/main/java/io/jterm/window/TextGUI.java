@@ -89,5 +89,17 @@ public interface TextGUI extends AutoCloseable {
      *
      * @return an unmodifiable view of the managed windows
      */
-    Collection<Window> getWindows();
+    java.util.Collection<Window> getWindows();
+
+    /**
+     * Returns the topmost window with the {@link WindowHint#MODAL} hint, or
+     * {@code null} when no modal overlays the stack. Animated background
+     * windows consult this for the OVERLAY-HOLD pause law (ambient scenes
+     * hold their frame while a modal is active).
+     *
+     * @return the modal window, or {@code null}
+     */
+    default Window modalWindow() {
+        return null;
+    }
 }

@@ -14,6 +14,32 @@ import java.util.EnumSet;
  */
 public record TextCell(String character, Color fg, Color bg, EnumSet<SGR> modifiers) {
 
+    /** The frozen empty modifier set shared by every no-modifier cell (GC law, 2026-11-21). MUST precede EMPTY: the empty-ctor branch reads it during class init. */
+    private static final EnumSet<SGR> NONE = EnumSet.noneOf(SGR.class);
+
+    /**
+     * Shared character strings for the printable ASCII and CP437/box-drawing
+     * ranges (GC law, Joe 2026-11-21: every painted cell paid a fresh
+     * String.valueOf(char) — two allocations per character per frame).
+     * One table entry per codepoint; anything outside the table falls back
+     * to a fresh String. Returned strings are never mutated.
+     */
+    private static final String[] SHARED_CHARS;
+    private static final int POOL_LO = 32;    // space
+    private static final int POOL_HI = 0x259F; // box drawing / blocks / shade glyphs
+    static {
+        SHARED_CHARS = new String[POOL_HI - POOL_LO + 1];
+        for (int c = POOL_LO; c <= POOL_HI; c++) {
+            SHARED_CHARS[c - POOL_LO] = String.valueOf((char) c);
+        }
+    }
+
+    /** A shared immutable string for a paintable character. */
+    private static String sharedChar(char c) {
+        int i = c - POOL_LO;
+        return (i >= 0 && i < SHARED_CHARS.length) ? SHARED_CHARS[i] : String.valueOf(c);
+    }
+
     /**
      * Shared empty cell containing a single space with default colors.
      */
@@ -27,8 +53,13 @@ public record TextCell(String character, Color fg, Color bg, EnumSet<SGR> modifi
     public TextCell {
         if (character == null || character.isEmpty())
             throw new IllegalArgumentException("Character cannot be null or empty");
-        // Defensive copy of mutable EnumSet
-        modifiers = modifiers == null ? EnumSet.noneOf(SGR.class) : EnumSet.copyOf(modifiers);
+        // Defensive copy of mutable EnumSet — EXCEPT the empty case shares a
+        // single frozen none-set (GC law, Joe 2026-11-21: every cell built
+        // with no modifiers paid an EnumSet copy; EMPTY-style cells dominate
+        // every frame). EnumSet.NONE here is guarded by convention (see
+        // NONE): callers never mutate a set they passed into a cell.
+        modifiers = (modifiers == null || modifiers.isEmpty())
+                ? NONE : EnumSet.copyOf(modifiers);
     }
 
     // Convenience constructors
@@ -38,7 +69,7 @@ public record TextCell(String character, Color fg, Color bg, EnumSet<SGR> modifi
      * @param c the character to write
      */
     public TextCell(char c) {
-        this(String.valueOf(c), AnsiColor.DEFAULT, AnsiColor.DEFAULT, EnumSet.noneOf(SGR.class));
+        this(sharedChar(c), AnsiColor.DEFAULT, AnsiColor.DEFAULT, NONE);
     }
 
     /**
@@ -50,7 +81,7 @@ public record TextCell(String character, Color fg, Color bg, EnumSet<SGR> modifi
      * @param mods optional SGR modifiers
      */
     public TextCell(char c, Color fg, Color bg, SGR... mods) {
-        this(String.valueOf(c), fg, bg, mods.length == 0 ? EnumSet.noneOf(SGR.class) : EnumSet.of(mods[0], mods));
+        this(sharedChar(c), fg, bg, mods.length == 0 ? NONE : EnumSet.of(mods[0], mods));
     }
 
     // Builder-style copy methods (return new instance since immutable)
@@ -62,7 +93,7 @@ public record TextCell(String character, Color fg, Color bg, EnumSet<SGR> modifi
      * @return a new TextCell with the given character
      */
     public TextCell withCharacter(char c) {
-        return new TextCell(String.valueOf(c), fg, bg, modifiers);
+        return new TextCell(sharedChar(c), fg, bg, modifiers);
     }
 
     /**

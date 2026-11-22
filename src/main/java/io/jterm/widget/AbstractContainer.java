@@ -36,6 +36,17 @@ public abstract class AbstractContainer extends AbstractComponent implements Con
     public List<Component> getChildren() { return new ArrayList<>(children); }
 
     /**
+     * The live child list VIEW for per-frame iteration (GC law, Joe
+     * 2026-11-21): the paint loop used getChildren() — a fresh ArrayList
+     * copy PER CONTAINER PER FRAME. The backing CopyOnWriteArrayList is
+     * safe to iterate directly (snapshot semantics); NEVER store or mutate
+     * through it.
+     *
+     * @return the live copy-on-write child list; iterate only
+     */
+    protected List<Component> childrenView() { return children; }
+
+    /**
      * CURSOR-ANCHOR LAW forwarding: containers report the caret cell of their
      * first child that has one, so a focused PANEL wrapping a text widget
      * (the common dialog structure — the window focuses the root panel)

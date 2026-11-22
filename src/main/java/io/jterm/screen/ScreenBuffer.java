@@ -33,14 +33,20 @@ public class ScreenBuffer {
         this.rows = size.rows();
         this.cells = new TextCell[columns * rows];
         java.util.Arrays.fill(cells, fill);
+        // GC law (Joe, 2026-11-21): size() used to build a fresh TerminalSize
+        // per call — the refresh path reads it several times per frame.
+        this.cachedSize = size;
     }
+
+    /** TerminalSize built once at construct/resize (GC law, 2026-11-21). */
+    private final TerminalSize cachedSize;
 
     /**
      * Returns the dimensions of this buffer.
      *
      * @return the buffer size in columns × rows
      */
-    public TerminalSize size() { return new TerminalSize(columns, rows); }
+    public TerminalSize size() { return cachedSize; }
 
     /**
      * Returns the cell at the given coordinates, or EMPTY if out of bounds.
@@ -117,10 +123,18 @@ public class ScreenBuffer {
      * @param cell   the fill cell
      */
     public synchronized void fillRect(int col, int row, int width, int height, TextCell cell) {
-        for (int r = row; r < row + height && r < rows; r++) {
-            for (int c = col; c < col + width && c < columns; c++) {
-                setCell(c, r, cell);
-            }
+        // GC law (Joe, 2026-11-21): this was per-cell setCell (sanitize +
+        // lock per cell) — a full-window panel fill walked 4,000 of them per
+        // frame. Sanitize ONCE, then Arrays.fill the row slices: identical
+        // resulting buffer, one lock, zero per-cell work.
+        TextCell safe = sanitize(cell);
+        int cLo = Math.max(0, col);
+        int cHi = Math.min(columns, col + width);
+        if (cLo >= cHi) return;
+        int rLo = Math.max(0, row);
+        int rHi = Math.min(rows, row + height);
+        for (int r = rLo; r < rHi; r++) {
+            java.util.Arrays.fill(cells, r * columns + cLo, r * columns + cHi, safe);
         }
     }
 
@@ -134,11 +148,17 @@ public class ScreenBuffer {
         List<CellDiff> diffs = new ArrayList<>();
         int maxRows = Math.min(rows, other.rows);
         int maxCols = Math.min(columns, other.columns);
+        // GC law (Joe, 2026-11-21): scan the flat arrays directly — the old
+        // loop paid two synchronized getCell calls per cell per frame even
+        // when nothing changed. Reference equality short-circuits the paint
+        // cache: a label re-drawn with the SAME cell refs equals instantly.
         for (int r = 0; r < maxRows; r++) {
+            int aOff = r * columns;
+            int bOff = r * other.columns;
             for (int c = 0; c < maxCols; c++) {
-                TextCell a = getCell(c, r);
-                TextCell b = other.getCell(c, r);
-                if (!a.equals(b)) {
+                TextCell a = cells[aOff + c];
+                TextCell b = other.cells[bOff + c];
+                if (a != b && !a.equals(b)) {
                     diffs.add(new CellDiff(c, r, a));
                 }
             }

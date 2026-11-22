@@ -47,7 +47,8 @@ public class Border extends AbstractContainer {
      */
     @Override
     protected TerminalSize calculatePreferredSize() {
-        var ps = getChildren().get(0).getPreferredSize();
+        var kids = childrenView();
+        var ps = kids.get(0).getPreferredSize();
         if (style.isEmpty()) return ps;
         return new TerminalSize(ps.columns() + 2, ps.rows() + 2);
     }
@@ -61,11 +62,12 @@ public class Border extends AbstractContainer {
     @Override
     public void setBounds(io.jterm.core.TerminalPosition position, TerminalSize size) {
         super.setBounds(position, size);
-        if (!getChildren().isEmpty()) {
+        var kids = childrenView();
+        if (!kids.isEmpty()) {
             if (style.isEmpty()) {
-                getChildren().get(0).setBounds(new TerminalPosition(0, 0), new TerminalSize(size.columns(), size.rows()));
+                kids.get(0).setBounds(new TerminalPosition(0, 0), new TerminalSize(size.columns(), size.rows()));
             } else {
-                getChildren().get(0).setBounds(new TerminalPosition(1, 1), new TerminalSize(size.columns() - 2, size.rows() - 2));
+                kids.get(0).setBounds(new TerminalPosition(1, 1), new TerminalSize(size.columns() - 2, size.rows() - 2));
             }
         }
     }

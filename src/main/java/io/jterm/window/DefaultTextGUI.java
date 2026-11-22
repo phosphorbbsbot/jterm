@@ -472,7 +472,12 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
             // Initialize the rendering buffer with theme colors so areas not
             // covered by any window get the theme background instead of black.
             var theme = ThemeManager.active();
-            var fillCell = new io.jterm.style.TextCell(' ', theme.foreground(), theme.background());
+            // GC law (Joe, 2026-11-21): the fill cell is rebuilt only when the
+            // theme's colors actually change — it is constant across frames.
+            if (fillCell == null || fillCell.fg() != theme.foreground()
+                    || fillCell.bg() != theme.background()) {
+                fillCell = new io.jterm.style.TextCell(' ', theme.foreground(), theme.background());
+            }
             // Reuse the render buffer across frames (GC law, 2026-10-26):
             // allocating a fresh 4400-cell buffer 8x/sec produced steady
             // young-gen GC churn that surfaced as multi-second scroll pauses
@@ -492,10 +497,19 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
                 var sub = io.jterm.graphics.TextGraphicsExtensions.subGraphics(g, window.getPosition(), window.getSize());
                 window.draw(sub);
             }
-            // Copy g buffer to screen
-            for (int r = 0; r < screen.getTerminalSize().rows(); r++) {
-                for (int c = 0; c < screen.getTerminalSize().columns(); c++) {
-                    screen.setCell(c, r, buf.getCell(c, r));
+            // Copy g buffer to screen — GC law (2026-11-21): this was a
+            // per-cell loop (2,000 synchronized get/set pairs per frame).
+            // The buffers are the same size and their cells were already
+            // sanitized when written, so copy row arrays directly when the
+            // screen exposes its back buffer; other screen types keep the
+            // per-cell path.
+            if (screen instanceof io.jterm.screen.DefaultScreen ds) {
+                ds.getBackBuffer().copyFrom(buf);
+            } else {
+                for (int r = 0; r < screen.getTerminalSize().rows(); r++) {
+                    for (int c = 0; c < screen.getTerminalSize().columns(); c++) {
+                        screen.setCell(c, r, buf.getCell(c, r));
+                    }
                 }
             }
             // CURSOR-ANCHOR LAW (2026-11-13): set the screen anchor from the
@@ -531,6 +545,8 @@ public class DefaultTextGUI implements TextGUI, WindowManager {
 
     private io.jterm.screen.ScreenBuffer gBuffer;
     private io.jterm.screen.ScreenBuffer renderBuffer;
+    /** Cached theme fill cell (GC law, 2026-11-21) — rebuilt on theme color change. */
+    private io.jterm.style.TextCell fillCell;
 
     /**
      * Run the main event loop until stopped.

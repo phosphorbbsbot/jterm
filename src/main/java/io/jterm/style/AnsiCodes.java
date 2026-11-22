@@ -31,6 +31,37 @@ public final class AnsiCodes {
     /** DEC private mode 2026 — end a synchronized (ESU) screen update. */
     public static final String END_SYNC_UPDATE = CSI + "?2026l";
 
+    // GC law (Joe, 2026-11-21): the refresh path called getBytes(UTF_8) on
+    // every constant per frame. These byte views are built ONCE. Returned
+    // arrays are treated as read-only by every caller (they only reach
+    // Terminal.writeRaw); never mutate them.
+    private static final byte[] RESET_BYTES = RESET.getBytes(StandardCharsets.UTF_8);
+    private static final byte[] BEGIN_SYNC_BYTES = BEGIN_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8);
+    private static final byte[] END_SYNC_BYTES = END_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8);
+    private static final byte[] DISABLE_AUTOWRAP_BYTES = DISABLE_AUTOWRAP.getBytes(StandardCharsets.UTF_8);
+    private static final byte[] ENABLE_AUTOWRAP_BYTES = ENABLE_AUTOWRAP.getBytes(StandardCharsets.UTF_8);
+    /** SGR enable/disable escapes: built once per SGR in a static block. */
+    private static final byte[][] ENABLE_BYTES;
+    private static final byte[][] DISABLE_BYTES;
+    static {
+        var values = SGR.values();
+        ENABLE_BYTES = new byte[values.length][];
+        DISABLE_BYTES = new byte[values.length][];
+        for (SGR sgr : values) {
+            ENABLE_BYTES[sgr.ordinal()] = (CSI + sgr.code + "m").getBytes(StandardCharsets.UTF_8);
+            int disableCode = switch (sgr) {
+                case BOLD, DIM -> 22;
+                case ITALIC -> 23;
+                case UNDERLINE -> 24;
+                case BLINK -> 25;
+                case REVERSE -> 27;
+                case HIDDEN -> 28;
+                case STRIKETHROUGH -> 29;
+            };
+            DISABLE_BYTES[sgr.ordinal()] = (CSI + disableCode + "m").getBytes(StandardCharsets.UTF_8);
+        }
+    }
+
     /**
      * DCH (Delete Character) — delete {@code n} characters at the cursor,
      * shifting the remainder of the line left and opening blanks at the end.
@@ -67,7 +98,7 @@ public final class AnsiCodes {
      * @return the ANSI escape sequence as bytes
      */
     public static byte[] enable(SGR sgr) {
-        return (CSI + sgr.code + "m").getBytes(StandardCharsets.UTF_8);
+        return ENABLE_BYTES[sgr.ordinal()];
     }
 
     /**
@@ -78,17 +109,7 @@ public final class AnsiCodes {
      * @return the ANSI escape sequence as bytes
      */
     public static byte[] disable(SGR sgr) {
-        // SGR disable codes: bold/dim/faint=22, italic=23, underline=24, blink=25, reverse=27, hidden=28, strikethrough=29
-        int disableCode = switch (sgr) {
-            case BOLD, DIM -> 22;
-            case ITALIC -> 23;
-            case UNDERLINE -> 24;
-            case BLINK -> 25;
-            case REVERSE -> 27;
-            case HIDDEN -> 28;
-            case STRIKETHROUGH -> 29;
-        };
-        return (CSI + disableCode + "m").getBytes(StandardCharsets.UTF_8);
+        return DISABLE_BYTES[sgr.ordinal()];
     }
 
     /**
@@ -119,6 +140,26 @@ public final class AnsiCodes {
      * @return the ANSI escape sequence as bytes
      */
     public static byte[] reset() {
-        return RESET.getBytes(StandardCharsets.UTF_8);
+        return RESET_BYTES;
+    }
+
+    /** Synchronized-output BSU bytes (built once; read-only). */
+    public static byte[] beginSyncUpdate() {
+        return BEGIN_SYNC_BYTES;
+    }
+
+    /** Synchronized-output ESU bytes (built once; read-only). */
+    public static byte[] endSyncUpdate() {
+        return END_SYNC_BYTES;
+    }
+
+    /** Disable-auto-wrap bytes (built once; read-only). */
+    public static byte[] disableAutowrap() {
+        return DISABLE_AUTOWRAP_BYTES;
+    }
+
+    /** Enable-auto-wrap bytes (built once; read-only). */
+    public static byte[] enableAutowrap() {
+        return ENABLE_AUTOWRAP_BYTES;
     }
 }

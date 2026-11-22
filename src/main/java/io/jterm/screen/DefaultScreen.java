@@ -256,7 +256,7 @@ public class DefaultScreen implements Screen {
         }
         if (bracket) {
             syncBracketActive = true;
-            terminal.writeRaw(AnsiCodes.BEGIN_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8));
+            terminal.writeRaw(AnsiCodes.beginSyncUpdate());
         }
         try {
             if (type == RefreshType.COMPLETE || deltas == null) {
@@ -272,7 +272,7 @@ public class DefaultScreen implements Screen {
             if (bracket) {
                 // ESU goes out after the frame's cells; emit it even if the
                 // frame write failed so the 2026 bracket never dangles.
-                terminal.writeRaw(AnsiCodes.END_SYNC_UPDATE.getBytes(StandardCharsets.UTF_8));
+                terminal.writeRaw(AnsiCodes.endSyncUpdate());
                 syncBracketActive = false;
                 // Flush-boundary law (2026-10-20): the frame body's internal
                 // flush happened BEFORE this ESU — without a trailing flush
@@ -312,7 +312,7 @@ public class DefaultScreen implements Screen {
         // of the last row (col 80, row 24) triggers auto-wrap → scroll, shifting
         // all content up by one row. Per-row cursor positioning doesn't prevent
         // this because the write itself still advances past the bottom margin.
-        terminal.writeRaw(AnsiCodes.DISABLE_AUTOWRAP.getBytes(StandardCharsets.UTF_8));
+        terminal.writeRaw(AnsiCodes.disableAutowrap());
         terminal.setCursorPosition(0, 0);
         // Write the SGR reset to the terminal — don't discard it.
         // Without this, the terminal keeps its stale SGR state (e.g. white
@@ -334,7 +334,7 @@ public class DefaultScreen implements Screen {
             }
         }
         // Re-enable auto-wrap for normal operation (delta refreshes, etc.)
-        terminal.writeRaw(AnsiCodes.ENABLE_AUTOWRAP.getBytes(StandardCharsets.UTF_8));
+        terminal.writeRaw(AnsiCodes.enableAutowrap());
         terminal.flush();
     }
 
@@ -551,6 +551,46 @@ public class DefaultScreen implements Screen {
             this(TRUECOLOR_ALWAYS);
         }
 
+        // GC law (Joe, 2026-11-21): transitionTo used a fresh StringBuilder +
+        // String intermediates + getBytes PER CELL — ~6 allocations per style
+        // transition, thousands per frame. One scratch buffer per tracker is
+        // safe: a tracker belongs to its Screen, and refreshes run serialized
+        // behind the screen lock (the film player uses its OWN tracker).
+        private static final byte[] CSI_BYTES = {27, '['};
+        private static final byte[] EMPTY_BYTES = new byte[0];
+        private byte[] scratch = new byte[96];
+        private int scratchLen = 0;
+
+        private void scratchEnsure(int need) {
+            if (scratchLen + need > scratch.length) {
+                int grown = Math.max(scratch.length * 2, scratchLen + need + 16);
+                byte[] bigger = new byte[grown];
+                System.arraycopy(scratch, 0, bigger, 0, scratchLen);
+                scratch = bigger;
+            }
+        }
+
+        private void scratchAdd(byte[] b) {
+            scratchEnsure(b.length);
+            System.arraycopy(b, 0, scratch, scratchLen, b.length);
+            scratchLen += b.length;
+        }
+
+        /** Appends {@code bytes} plus one trailing ASCII byte. */
+        private void scratchAdd(byte[] b, byte tail) {
+            scratchEnsure(b.length + 1);
+            System.arraycopy(b, 0, scratch, scratchLen, b.length);
+            scratchLen += b.length;
+            scratch[scratchLen++] = tail;
+        }
+
+        private byte[] scratchTake() {
+            byte[] out = new byte[scratchLen];
+            System.arraycopy(scratch, 0, out, 0, scratchLen);
+            scratchLen = 0;
+            return out;
+        }
+
         /**
          * Tracker that consults the terminal's declared depth on every
          * {@link #transitionTo(TextCell)}.
@@ -617,7 +657,7 @@ public class DefaultScreen implements Screen {
                 return reset;
             }
 
-            var sb = new StringBuilder();
+            scratchLen = 0;
             boolean changed = false;
 
             // Null fg/bg are API-legal ("transparent" — Label(text, fg, null) stores
@@ -626,18 +666,20 @@ public class DefaultScreen implements Screen {
             // the MAPPED current state, so two distinct RgbColors that map to the
             // same index emit zero redundant sequences.
             if (mappedFg != null && !mappedFg.equals(currentFg)) {
-                sb.append(AnsiCodes.CSI).append(new String(mappedFg.fgSequence(), StandardCharsets.UTF_8)).append("m");
+                scratchAdd(CSI_BYTES);
+                scratchAdd(mappedFg.fgSequence(), (byte) 'm');
                 currentFg = mappedFg;
                 changed = true;
             }
             if (mappedBg != null && !mappedBg.equals(currentBg)) {
-                sb.append(AnsiCodes.CSI).append(new String(mappedBg.bgSequence(), StandardCharsets.UTF_8)).append("m");
+                scratchAdd(CSI_BYTES);
+                scratchAdd(mappedBg.bgSequence(), (byte) 'm');
                 currentBg = mappedBg;
                 changed = true;
             }
             for (SGR mod : target.modifiers()) {
                 if (!currentMods.contains(mod)) {
-                    sb.append(new String(AnsiCodes.enable(mod), StandardCharsets.UTF_8));
+                    scratchAdd(AnsiCodes.enable(mod));
                     currentMods.add(mod);
                     changed = true;
                 }
@@ -647,7 +689,7 @@ public class DefaultScreen implements Screen {
             while (it.hasNext()) {
                 SGR mod = it.next();
                 if (!target.modifiers().contains(mod)) {
-                    sb.append(new String(AnsiCodes.disable(mod), StandardCharsets.UTF_8));
+                    scratchAdd(AnsiCodes.disable(mod));
                     it.remove();
                     changed = true;
                     anyModDisabled = true;
@@ -661,19 +703,21 @@ public class DefaultScreen implements Screen {
             // state is already MAPPED, so the re-emit degenerates on the
             // declared tier too (never a 38;2 byte below TRUECOLOR).
             if (anyModDisabled) {
-                sb.append(AnsiCodes.CSI).append(new String(currentFg.fgSequence(), StandardCharsets.UTF_8)).append("m");
-                sb.append(AnsiCodes.CSI).append(new String(currentBg.bgSequence(), StandardCharsets.UTF_8)).append("m");
+                scratchAdd(CSI_BYTES);
+                scratchAdd(currentFg.fgSequence(), (byte) 'm');
+                scratchAdd(CSI_BYTES);
+                scratchAdd(currentBg.bgSequence(), (byte) 'm');
                 // Shared reset families: ESC[22m clears BOTH bold and dim (and
                 // ESC[23m clears italic+strikethrough). The disable above only
                 // removed the departing modifier — re-assert every modifier the
                 // tracker still holds so the terminal's state matches ours
                 // (fixes bold↔dim transitions degrading on scroll repaints).
                 for (SGR mod : currentMods) {
-                    sb.append(new String(AnsiCodes.enable(mod), StandardCharsets.UTF_8));
+                    scratchAdd(AnsiCodes.enable(mod));
                 }
             }
 
-            return changed ? sb.toString().getBytes(StandardCharsets.UTF_8) : new byte[0];
+            return changed ? scratchTake() : EMPTY_BYTES;
         }
 
         /**

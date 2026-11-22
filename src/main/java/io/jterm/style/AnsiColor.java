@@ -107,27 +107,27 @@ public enum AnsiColor implements Color {
      *
      * @return the SGR foreground parameter bytes
      */
+    // GC law (Joe, 2026-11-21): 16 fixed colors + DEFAULT — the parameter
+    // bytes are built once, indexed by the color's index with the final slot
+    // (17) carrying DEFAULT's reset code. Callers treat them as read-only.
+    private static final byte[][] FG_SEQS = {
+            "30".getBytes(), "31".getBytes(), "32".getBytes(), "33".getBytes(),
+            "34".getBytes(), "35".getBytes(), "36".getBytes(), "37".getBytes(),
+            "90".getBytes(), "91".getBytes(), "92".getBytes(), "93".getBytes(),
+            "94".getBytes(), "95".getBytes(), "96".getBytes(), "97".getBytes(),
+            "39".getBytes(), // DEFAULT
+    };
+    private static final byte[][] BG_SEQS = {
+            "40".getBytes(), "41".getBytes(), "42".getBytes(), "43".getBytes(),
+            "44".getBytes(), "45".getBytes(), "46".getBytes(), "47".getBytes(),
+            "100".getBytes(), "101".getBytes(), "102".getBytes(), "103".getBytes(),
+            "104".getBytes(), "105".getBytes(), "106".getBytes(), "107".getBytes(),
+            "49".getBytes(), // DEFAULT
+    };
+
     @Override
     public byte[] fgSequence() {
-        return switch (index) {
-            case 0 -> "30".getBytes();
-            case 1 -> "31".getBytes();
-            case 2 -> "32".getBytes();
-            case 3 -> "33".getBytes();
-            case 4 -> "34".getBytes();
-            case 5 -> "35".getBytes();
-            case 6 -> "36".getBytes();
-            case 7 -> "37".getBytes();
-            case 8 -> "90".getBytes();
-            case 9 -> "91".getBytes();
-            case 10 -> "92".getBytes();
-            case 11 -> "93".getBytes();
-            case 12 -> "94".getBytes();
-            case 13 -> "95".getBytes();
-            case 14 -> "96".getBytes();
-            case 15 -> "97".getBytes();
-            default -> "39".getBytes(); // DEFAULT
-        };
+        return FG_SEQS[index < 0 ? 16 : index];
     }
 
     /**
@@ -137,24 +137,6 @@ public enum AnsiColor implements Color {
      */
     @Override
     public byte[] bgSequence() {
-        return switch (index) {
-            case 0 -> "40".getBytes();
-            case 1 -> "41".getBytes();
-            case 2 -> "42".getBytes();
-            case 3 -> "43".getBytes();
-            case 4 -> "44".getBytes();
-            case 5 -> "45".getBytes();
-            case 6 -> "46".getBytes();
-            case 7 -> "47".getBytes();
-            case 8 -> "100".getBytes();
-            case 9 -> "101".getBytes();
-            case 10 -> "102".getBytes();
-            case 11 -> "103".getBytes();
-            case 12 -> "104".getBytes();
-            case 13 -> "105".getBytes();
-            case 14 -> "106".getBytes();
-            case 15 -> "107".getBytes();
-            default -> "49".getBytes(); // DEFAULT
-        };
+        return BG_SEQS[index < 0 ? 16 : index];
     }
 }

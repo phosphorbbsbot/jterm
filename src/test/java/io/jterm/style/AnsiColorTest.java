@@ -250,11 +250,13 @@ class AnsiColorTest {
     @ParameterizedTest
     @EnumSource(AnsiColor.class)
     void fgAndBgAreStableAcrossCalls(AnsiColor color) {
-        // Switch returns a fresh array each call but with same content
+        // GC law (Joe, 2026-11-21): the palette SGR bytes are built ONCE —
+        // every call returns the SAME cached array (content-stable by
+        // construction; callers treat it as read-only, they only writeRaw).
         byte[] fg1 = color.fgSequence();
         byte[] fg2 = color.fgSequence();
         assertArrayEquals(fg1, fg2);
-        assertNotSame(fg1, fg2); // each call produces a new array (getBytes())
+        assertSame(fg1, fg2); // one cached array per palette color
     }
 
     // ---- New tests: Color interface polymorphism ----

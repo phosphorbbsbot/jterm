@@ -65,6 +65,7 @@ public class Label extends AbstractComponent {
      */
     public void setText(String text) {
         this.text = text;
+        cachedRows = null; // GC law (2026-11-21): the paint cache is content-bound
         invalidate();
     }
 
@@ -129,17 +130,48 @@ public class Label extends AbstractComponent {
     /** Renders each line of text with horizontal alignment, falling back to theme colors when defaults are used. */
     @Override
     protected void drawComponent(TextGraphics graphics) {
-        var lines = text.split("\\n", -1);
         var size = getSize();
         // If label uses DEFAULT colors, fall back to theme fg/bg so the
         // label inherits the themed background instead of terminal default.
         var effectiveStyle = style;
+        boolean themed = false;
         if (style.fg() == AnsiColor.DEFAULT && style.bg() == AnsiColor.DEFAULT) {
             var theme = ThemeManager.active();
             effectiveStyle = new TextCell(' ', theme.foreground(), theme.background());
+            themed = true;
         }
-        for (int i = 0; i < lines.length && i < size.rows(); i++) {
-            var line = lines[i];
+
+        /* GC law (Joe, 2026-11-21): every frame re-split the text AND
+         * re-created one TextCell record (plus its shared char String) per
+         * painted character — the biggest single allocation source on the
+         * paint loop. Labels paint UN changing content frame after frame, so
+         * cache the per-row lines + the built cell rows and re-draw them;
+         * invalidate on every text/style/alignment mutation (setText etc.
+         * already call invalidate() → the cache is rebuilt there). Theme-
+         * resolved labels key the cache on the theme instance, so a theme
+         * switch rebuilds it. Per-character allocation only happens once
+         * per (row, character); every later frame reuses the SAME cell refs,
+         * which also lets ScreenBuffer.diffFrom short-circuit identical
+         * cells by reference. */
+        if (cachedStyle != effectiveStyle || cachedRows == null
+                || (themed && cachedTheme != ThemeManager.active())) {
+            cachedStyle = effectiveStyle;
+            cachedTheme = themed ? ThemeManager.active() : null;
+            cachedLines = text == null ? new String[0] : text.split("\n", -1);
+            cachedRows = new TextCell[cachedLines.length][];
+            for (int i = 0; i < cachedLines.length; i++) {
+                var line = cachedLines[i];
+                var row = new TextCell[line.length()];
+                for (int j = 0; j < line.length(); j++) {
+                    row[j] = effectiveStyle.withCharacter(line.charAt(j));
+                }
+                cachedRows[i] = row;
+            }
+        }
+        if (cachedRows == null) return;
+
+        for (int i = 0; i < cachedLines.length && i < size.rows(); i++) {
+            var line = cachedLines[i];
             int width = TerminalTextUtils.getTrueWidth(line);
             int x = 0;
             if (width < size.columns()) {
@@ -149,7 +181,16 @@ public class Label extends AbstractComponent {
                     case LEFT   -> x = 0;
                 }
             }
-            graphics.drawString(x, i, line, effectiveStyle);
+            var row = cachedRows[i];
+            for (int j = 0; j < row.length; j++) {
+                graphics.setCell(x + j, i, row[j]);
+            }
         }
     }
+
+    /** Cached paint rows (GC law, 2026-11-21) — rebuilt on mutation/theme change. */
+    private String[] cachedLines;
+    private TextCell[][] cachedRows;
+    private TextCell cachedStyle;
+    private Object cachedTheme;
 }

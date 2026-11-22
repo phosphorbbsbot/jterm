@@ -144,7 +144,6 @@ public class AnimatedBorder extends Border {
         // Fill background like Border.drawComponent does
         var bgCell = new TextCell(' ', theme.foreground(), theme.background());
         graphics.fillRectangle(0, 0, size.columns(), size.rows(), bgCell);
-
         // Base border foreground: per-cell > border color > theme default
         var baseBorderFg = ctx.getBorderColor() != null ? ctx.getBorderColor() : theme.border();
 
@@ -201,7 +200,7 @@ public class AnimatedBorder extends Border {
      * This is used by drawWithBorderContext to avoid overwriting animated chars.
      */
     private void drawChildren(TextGraphics graphics) {
-        for (var child : getChildren()) {
+        for (var child : childrenView()) {
             if (!child.isVisible()) continue;
             var pos = child.getPosition();
             var childSize = child.getSize();

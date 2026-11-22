@@ -1,5 +1,7 @@
 package io.jterm.style;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * 256-color xterm palette. Index 0-15 = system, 16-231 = 6×6×6 RGB cube, 232-255 = grayscale ramp.
  *
@@ -59,13 +61,27 @@ public record IndexedColor(int index) implements Color {
 
     private static int grayVal(int idx) { return 0x08 + (idx - 232) * 0x0a; }
 
+    // GC law (Joe, 2026-11-21): the palette is a FIXED set of 256 indexed
+    // colors — the SGR parameters are built once. Returned arrays are
+    // read-only (they flow straight to Terminal.writeRaw).
+    private static final byte[][] FG_SEQS;
+    private static final byte[][] BG_SEQS;
+    static {
+        FG_SEQS = new byte[256][];
+        BG_SEQS = new byte[256][];
+        for (int i = 0; i < 256; i++) {
+            FG_SEQS[i] = ("38;5;" + i).getBytes(StandardCharsets.UTF_8);
+            BG_SEQS[i] = ("48;5;" + i).getBytes(StandardCharsets.UTF_8);
+        }
+    }
+
     /**
      * Return the ANSI foreground escape sequence for this color.
      *
      * @return the SGR foreground parameter bytes
      */
     @Override
-    public byte[] fgSequence() { return ("38;5;" + index).getBytes(); }
+    public byte[] fgSequence() { return FG_SEQS[index]; }
 
     /**
      * Return the ANSI background escape sequence for this color.
@@ -73,5 +89,5 @@ public record IndexedColor(int index) implements Color {
      * @return the SGR background parameter bytes
      */
     @Override
-    public byte[] bgSequence() { return ("48;5;" + index).getBytes(); }
+    public byte[] bgSequence() { return BG_SEQS[index]; }
 }

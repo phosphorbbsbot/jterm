@@ -621,10 +621,33 @@ public class DefaultScreen implements Screen {
             if (depthTo == ColorDepth.TRUECOLOR || !(color instanceof RgbColor rgb)) {
                 return color;
             }
-            return depthTo == ColorDepth.C256
+            // GC law (Joe, 2026-11-21): the nearest-palette search ran PER
+            // CELL on non-truecolor clients and allocated a fresh
+            // IndexedColor each time. Theme/film colors are a bounded set —
+            // memoize per tier, keyed by value (RgbColor record equals), so
+            // repeated mapping is a lookup. The cap stops-adding (worst
+            // case past the cap = the old per-call path, no eviction churn).
+            var cache = depthTo == ColorDepth.C256 ? C256_MAPPED : ANSI16_MAPPED;
+            var cached = cache.get(rgb);
+            if (cached != null) {
+                return cached;
+            }
+            Color mapped = depthTo == ColorDepth.C256
                     ? IndexedColor.fromRgb(rgb.r(), rgb.g(), rgb.b())
                     : AnsiColor.nearest(rgb.r(), rgb.g(), rgb.b());
+            if (cache.size() < MAPPED_RGB_CACHE_CAP) {
+                cache.put(rgb, mapped);
+            }
+            return mapped;
         }
+
+        /** Per-tier memo of RgbColor → mapped palette color (GC law, 2026-11-21). */
+        private static final java.util.concurrent.ConcurrentHashMap<RgbColor, Color> C256_MAPPED =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        private static final java.util.concurrent.ConcurrentHashMap<RgbColor, Color> ANSI16_MAPPED =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        /** Stop-adding cap: past it the mapping falls back to per-call search. */
+        private static final int MAPPED_RGB_CACHE_CAP = 16384;
 
         /**
          * Emits the delta SGR bytes that move the terminal to the target cell's

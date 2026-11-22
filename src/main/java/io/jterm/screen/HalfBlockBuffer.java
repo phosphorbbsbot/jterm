@@ -208,7 +208,24 @@ public final class HalfBlockBuffer {
      * @return the encoded screen buffer, sized columns × rows
      */
     public synchronized ScreenBuffer toScreenBuffer(ColorDepth depth) {
-        var out = new ScreenBuffer(new TerminalSize(columns, rows()));
+        return toScreenBuffer(depth, null);
+    }
+
+    /**
+     * Encodes the grid into the GIVEN buffer when its shape matches (GC law,
+     * Joe 2026-11-21: film playback allocated a fresh HalfBlockBuffer AND a
+     * fresh ScreenBuffer per frame — both are same-shape frame to frame, so
+     * callers hold them and re-encode). Pass {@code null} to allocate.
+     *
+     * @param depth the terminal tier to map to; never null
+     * @param out   a same-shape buffer to overwrite, or null to allocate
+     * @return the encoded screen buffer, sized columns × rows
+     */
+    public synchronized ScreenBuffer toScreenBuffer(ColorDepth depth, ScreenBuffer out) {
+        if (out == null || out.size().columns() != columns
+                || out.size().rows() != rows()) {
+            out = new ScreenBuffer(new TerminalSize(columns, rows()));
+        }
         for (int r = 0; r < rows(); r++) {
             for (int c = 0; c < columns; c++) {
                 Color top = getSubCell(c, 2 * r);

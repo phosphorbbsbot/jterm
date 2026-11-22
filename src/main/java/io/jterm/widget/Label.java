@@ -64,6 +64,12 @@ public class Label extends AbstractComponent {
      * @param text the new text
      */
     public void setText(String text) {
+        // GC law (Joe, 2026-11-21): the BBS recomposes its status band every
+        // frame with an equal string; tearing the paint cache down per frame
+        // put the band back on per-cell churn and kept the diff non-empty.
+        // Equal text = nothing observable changed: keep the cache, skip
+        // invalidation (the diff stays empty → byte-silent idle repaints).
+        if (java.util.Objects.equals(this.text, text)) return;
         this.text = text;
         cachedRows = null; // GC law (2026-11-21): the paint cache is content-bound
         invalidate();

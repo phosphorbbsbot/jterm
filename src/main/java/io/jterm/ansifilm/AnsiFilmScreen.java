@@ -391,7 +391,18 @@ public class AnsiFilmScreen extends WindowImpl {
         // FLUSH-BOUNDARY LAW: the frame reaches the wire before the next one
         // is even computed; the ESU closed this frame above.
         terminal.flush();
-        previousFrame = copyOf(target);
+        // GC law (Joe, 2026-11-21): the delta baseline was a fresh buffer +
+        // copy per frame. Same-shape frames reuse it in place — emission
+        // above already finished reading it, and the next frame's delta pass
+        // compares against exactly these (updated) contents, so reuse has
+        // identical semantics to the copy. lastEmitted deliberately points
+        // at the live buffer: draw() mirrors the latest emitted frame.
+        if (previousFrame == null || !sameRowCount(previousFrame, target)
+                || previousFrame.size().columns() != target.size().columns()) {
+            previousFrame = copyOf(target);
+        } else {
+            previousFrame.copyFrom(target);
+        }
         lastEmitted = previousFrame;
     }
 
@@ -415,19 +426,41 @@ public class AnsiFilmScreen extends WindowImpl {
      * density. Each raster cell's color rides the RASTER LAW below. An odd
      * sub-row count keeps the trailing partnerless half transparent (the
      * buffer's space-fill law).
+     *
+     * <p>GC law (Joe, 2026-11-21): the half-block grid and the encoded
+     * target were rebuilt per frame. Both are same-shape frame to frame
+     * (the row law below), so both are held and re-encoded — the raster
+     * walk below overwrites EVERY sub-cell each pass, so no reset is
+     * needed; only a shape change reallocates.</p>
      */
     private ScreenBuffer encodeSubcell(ScreenBuffer raster) {
         var size = raster.size();
         int cols = size.columns();
         int subRows = size.rows();
-        var buf = HalfBlockBuffer.forSubRows(cols, subRows);
+        int cellRows = (subRows + 1) / 2;
+        if (reusableHalf == null || reusableHalf.columns() != cols
+                || reusableHalf.subRows() != subRows) {
+            reusableHalf = HalfBlockBuffer.forSubRows(cols, subRows);
+            reusableTarget = null; // the encoded shape follows the half grid
+        }
+        if (reusableTarget == null
+                || reusableTarget.size().rows() != cellRows
+                || reusableTarget.size().columns() != cols) {
+            reusableTarget = null;
+        }
         for (int sub = 0; sub < subRows; sub++) {
             for (int c = 0; c < cols; c++) {
-                buf.setSubCell(c, sub, subCellColor(raster.getCell(c, sub)));
+                reusableHalf.setSubCell(c, sub, subCellColor(raster.getCell(c, sub)));
             }
         }
-        return buf.toScreenBuffer(terminal.colorDepth());
+        var out = reusableHalf.toScreenBuffer(terminal.colorDepth(), reusableTarget);
+        reusableTarget = out;
+        return out;
     }
+
+    /** Same-shape film encoders held across frames (GC law, 2026-11-21). */
+    private HalfBlockBuffer reusableHalf;
+    private ScreenBuffer reusableTarget;
 
     /**
      * The SUBCELL raster law: a frame body is a COLOR FIELD. A painted cell's

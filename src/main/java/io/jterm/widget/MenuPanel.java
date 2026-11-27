@@ -210,11 +210,14 @@ public class MenuPanel extends AbstractComponent {
             var item = items.get(i);
             boolean highlighted = (i == highlightedIndex);
 
-            // Key in brackets: "[M]" — right-padded to keyColWidth
+            // Key in brackets: "[M]" — right-padded to keyColWidth. Drawn as
+            // three colored segments (Joe 2026-11-27, per-key styling): DIM
+            // brackets and the key characters bold in the theme accent.
+            // Widths/padding are unchanged: "[M]" still measures 3 columns.
             String keyInBrackets = "[" + item.key() + "]";
             int keyWidth = TerminalTextUtils.getTrueWidth(keyInBrackets);
             int keyPadding = Math.max(0, keyColWidth - keyWidth);
-            String keyText = " ".repeat(keyPadding) + keyInBrackets;
+            int bracketX = colX + 1 + keyPadding; // '[' after the right padding
             // Start at column 1 (leading space)
             // Highlighted cells swap fg/bg directly instead of using SGR.REVERSE.
             // Some CP437 clients (MuffinTerm) don't implement ESC[7m (REVERSE),
@@ -223,7 +226,20 @@ public class MenuPanel extends AbstractComponent {
             var keyCell = highlighted
                     ? new TextCell(' ', theme.background(), theme.foreground(), SGR.BOLD)
                     : bold;
-            graphics.drawString(colX + 1, row, keyText, keyCell);
+            // DIM on swapped (inverted) colors reads muddy — highlighted rows
+            // keep the bare swapped pair so the row still reads as full inversion.
+            var bracketCell = highlighted
+                    ? new TextCell('[', theme.background(), theme.foreground())
+                    : new TextCell('[', theme.foreground(), theme.background(), SGR.DIM);
+            var keyCharCell = highlighted
+                    ? new TextCell(' ', theme.background(), theme.foreground(), SGR.BOLD)
+                    : new TextCell(' ', theme.accent(), theme.background(), SGR.BOLD);
+            graphics.drawString(colX + 1, row, " ".repeat(keyPadding), keyCell);
+            graphics.drawString(bracketX, row, "[", bracketCell);
+            // Every character of the key renders in accent (multi-char keys too);
+            // drawString handles per-char column advance for double-width chars.
+            graphics.drawString(bracketX + 1, row, item.key(), keyCharCell);
+            graphics.drawString(bracketX + keyWidth - 1, row, "]", bracketCell);
 
             // Description: left-aligned after the gap
             String desc = TerminalTextUtils.truncate(item.description(), availableDescWidth);

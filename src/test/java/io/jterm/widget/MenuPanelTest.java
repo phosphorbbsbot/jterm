@@ -109,8 +109,10 @@ class MenuPanelTest {
         panel.setBounds(TerminalPosition.TOP_LEFT, new TerminalSize(24, 3));
         var buf = new ScreenBuffer(new TerminalSize(24, 3));
         panel.draw(new TextGraphics(buf));
-        // Key is at row 1, col 1 (the '[' of "[M]")
-        assertTrue(buf.getCell(1, 1).modifiers().contains(SGR.BOLD));
+        // Key CHAR is at row 1, col 2 ('M' of "[M]") and renders bold; the
+        // brackets are DIM per-segment styling (Joe 2026-11-27, per-key styling)
+        assertTrue(buf.getCell(2, 1).modifiers().contains(SGR.BOLD));
+        assertTrue(buf.getCell(1, 1).modifiers().contains(SGR.DIM));
     }
 
     @Test
@@ -373,5 +375,109 @@ class MenuPanelTest {
         var ps = panel.getPreferredSize();
         // ceil(5/2) = 3 items per column + 2 padding = 5 rows
         assertEquals(5, ps.rows());
+    }
+
+    // ---- Per-segment key styling: DIM brackets + accent key chars ----
+    // (Joe 2026-11-27: keys pop in the theme accent; brackets dim. Highlighted
+    // rows keep the manual fg/bg swap — never SGR.REVERSE / never DIM on
+    // inverted cells, some CP437 clients don't implement ESC[7m.)
+
+    @Test
+    void normalRowBracketsRenderDimInForeground() {
+        var panel = new MenuPanel();
+        panel.addItem("M", "Message Boards");
+        panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
+        var buf = new ScreenBuffer(panel.getPreferredSize());
+        panel.draw(new TextGraphics(buf));
+        var theme = ThemeManager.active();
+        var open = buf.getCell(1, 1);
+        assertEquals('[', open.character().charAt(0));
+        assertEquals(theme.foreground(), open.fg(), "bracket fg stays theme.foreground");
+        assertEquals(theme.background(), open.bg(), "bracket bg stays theme.background");
+        assertTrue(open.modifiers().contains(SGR.DIM), "open bracket should be DIM");
+        assertFalse(open.modifiers().contains(SGR.BOLD), "bracket is no longer bold");
+        var close = buf.getCell(3, 1);
+        assertEquals(']', close.character().charAt(0));
+        assertEquals(theme.foreground(), close.fg(), "close bracket fg stays theme.foreground");
+        assertTrue(close.modifiers().contains(SGR.DIM), "close bracket should be DIM");
+    }
+
+    @Test
+    void normalRowKeyCharRendersBoldInAccent() {
+        var panel = new MenuPanel();
+        panel.addItem("M", "Message Boards");
+        panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
+        var buf = new ScreenBuffer(panel.getPreferredSize());
+        panel.draw(new TextGraphics(buf));
+        var theme = ThemeManager.active();
+        var key = buf.getCell(2, 1);
+        assertEquals('M', key.character().charAt(0));
+        assertEquals(theme.accent(), key.fg(), "key char should render in theme accent");
+        assertEquals(theme.background(), key.bg(), "key char bg stays theme.background");
+        assertTrue(key.modifiers().contains(SGR.BOLD), "key char should be BOLD");
+        assertFalse(key.modifiers().contains(SGR.DIM), "key char must not be DIM");
+    }
+
+    @Test
+    void multiCharKeyRendersEveryCharBoldInAccent() {
+        var panel = new MenuPanel();
+        panel.addItem("Enter", "Submit");
+        // keyCol = 7 ("[Enter]"): '[' at col 1, E..r at cols 2-6, ']' at col 7
+        panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
+        var buf = new ScreenBuffer(panel.getPreferredSize());
+        panel.draw(new TextGraphics(buf));
+        var theme = ThemeManager.active();
+        assertTrue(buf.getCell(1, 1).modifiers().contains(SGR.DIM));
+        assertEquals(']', buf.getCell(7, 1).character().charAt(0));
+        assertTrue(buf.getCell(7, 1).modifiers().contains(SGR.DIM));
+        String key = "Enter";
+        for (int c = 0; c < key.length(); c++) {
+            var cell = buf.getCell(2 + c, 1);
+            assertEquals(key.charAt(c), cell.character().charAt(0),
+                    "char at col " + (2 + c));
+            assertEquals(theme.accent(), cell.fg(),
+                    "key char '" + key.charAt(c) + "' fg should be theme accent");
+            assertTrue(cell.modifiers().contains(SGR.BOLD),
+                    "key char '" + key.charAt(c) + "' should be BOLD");
+        }
+    }
+
+    @Test
+    void highlightedRowInvertsKeyWithoutDim() {
+        var panel = new MenuPanel();
+        panel.addItem("M", "Message Boards");
+        panel.addItem("C", "Live Chat");
+        panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
+        panel.setHighlightedIndex(0);
+        var buf = new ScreenBuffer(panel.getPreferredSize());
+        panel.draw(new TextGraphics(buf));
+        var theme = ThemeManager.active();
+        // Highlighted row: manual fg/bg swap, NO DIM anywhere on the row
+        var open = buf.getCell(1, 1);
+        assertEquals('[', open.character().charAt(0));
+        assertEquals(theme.background(), open.fg(),
+                "highlighted bracket fg = theme.background (manual swap)");
+        assertEquals(theme.foreground(), open.bg(),
+                "highlighted bracket bg = theme.foreground (manual swap)");
+        assertFalse(open.modifiers().contains(SGR.DIM),
+                "no DIM on inverted cells (muddy on swapped colors)");
+        assertFalse(open.modifiers().contains(SGR.BOLD), "brackets use swapped base");
+        var key = buf.getCell(2, 1);
+        assertEquals('M', key.character().charAt(0));
+        assertEquals(theme.background(), key.fg(),
+                "highlighted key fg = theme.background (manual swap)");
+        assertEquals(theme.foreground(), key.bg(),
+                "highlighted key bg = theme.foreground (manual swap)");
+        assertTrue(key.modifiers().contains(SGR.BOLD), "highlighted key stays BOLD");
+        assertFalse(key.modifiers().contains(SGR.DIM), "no DIM on highlighted key");
+        var desc = buf.getCell(9, 1);
+        assertEquals('M', desc.character().charAt(0));
+        assertEquals(theme.background(), desc.fg(), "highlighted desc keeps manual swap");
+        assertEquals(theme.foreground(), desc.bg(), "highlighted desc keeps manual swap");
+        assertFalse(desc.modifiers().contains(SGR.DIM));
+        // Non-highlighted second row keeps the new normal styling
+        assertTrue(buf.getCell(1, 2).modifiers().contains(SGR.DIM), "row 2 bracket still DIM");
+        assertEquals(theme.accent(), buf.getCell(2, 2).fg(), "row 2 key in accent");
+        assertTrue(buf.getCell(2, 2).modifiers().contains(SGR.BOLD), "row 2 key still BOLD");
     }
 }

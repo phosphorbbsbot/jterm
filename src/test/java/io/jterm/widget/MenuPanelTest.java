@@ -5,13 +5,40 @@ import io.jterm.core.TerminalSize;
 import io.jterm.graphics.TextGraphics;
 import io.jterm.screen.ScreenBuffer;
 import io.jterm.style.AnsiColor;
+import io.jterm.style.Color;
+import io.jterm.style.RgbColor;
 import io.jterm.style.SGR;
+import io.jterm.style.Theme;
 import io.jterm.style.ThemeManager;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class MenuPanelTest {
+
+    // Theme-switching tests must not leak state into other test classes
+    @AfterEach
+    void resetTheme() {
+        ThemeManager.setActive(Theme.DARK);
+    }
+
+    /**
+     * Minimal custom theme carrying the given fg/bg everywhere the menu reads.
+     * Accent is deliberately {@code BRIGHT_CYAN} so key-styling assertions
+     * prove the key uses the BRIGHTENED FOREGROUND, not the accent slot
+     * (Joe 2026-11-27 refinement: key = bright version of each theme's
+     * text color, not accent).
+     */
+    private static Theme themeWithFg(Color fg, Color bg) {
+        return new Theme(fg, bg,
+                bg, fg, // selection
+                bg, fg, // focus
+                fg,     // border
+                bg, fg, // title
+                AnsiColor.BRIGHT_CYAN, // accent — intentionally != brightened fg
+                bg, fg); // header
+    }
 
     // New format: "[M]" keys in brackets, left-aligned descriptions, vertical padding
     // keyColWidth = max key width + 2 (brackets), GAP = 5, 1 leading + 1 trailing space
@@ -111,7 +138,11 @@ class MenuPanelTest {
         panel.draw(new TextGraphics(buf));
         // Key CHAR is at row 1, col 2 ('M' of "[M]") and renders bold; the
         // brackets are DIM per-segment styling (Joe 2026-11-27, per-key styling)
-        assertTrue(buf.getCell(2, 1).modifiers().contains(SGR.BOLD));
+        var keyCell = buf.getCell(2, 1);
+        assertTrue(keyCell.modifiers().contains(SGR.BOLD));
+        // DARK test theme fg = AnsiColor.WHITE → key must be BRIGHT_WHITE
+        assertEquals(AnsiColor.BRIGHT_WHITE, keyCell.fg(),
+                "key fg = brightened theme foreground, not foreground/accent");
         assertTrue(buf.getCell(1, 1).modifiers().contains(SGR.DIM));
     }
 
@@ -377,10 +408,11 @@ class MenuPanelTest {
         assertEquals(5, ps.rows());
     }
 
-    // ---- Per-segment key styling: DIM brackets + accent key chars ----
-    // (Joe 2026-11-27: keys pop in the theme accent; brackets dim. Highlighted
-    // rows keep the manual fg/bg swap — never SGR.REVERSE / never DIM on
-    // inverted cells, some CP437 clients don't implement ESC[7m.)
+    // ---- Per-segment key styling: DIM brackets + brightened-fg key chars ----
+    // (Joe 2026-11-27, refined: the key character is the BRIGHT version of the
+    // theme's FOREGROUND text color — not the accent slot; brackets dim.
+    // Highlighted rows keep the manual fg/bg swap — never SGR.REVERSE / never
+    // DIM on inverted cells, some CP437 clients don't implement ESC[7m.)
 
     @Test
     void normalRowBracketsRenderDimInForeground() {
@@ -403,30 +435,33 @@ class MenuPanelTest {
     }
 
     @Test
-    void normalRowKeyCharRendersBoldInAccent() {
+    void normalRowKeyCharRendersBoldInBrightenedForeground() {
         var panel = new MenuPanel();
         panel.addItem("M", "Message Boards");
         panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
         var buf = new ScreenBuffer(panel.getPreferredSize());
         panel.draw(new TextGraphics(buf));
         var theme = ThemeManager.active();
+        // Default test theme (DARK) has fg = AnsiColor.WHITE, so the key must
+        // come out BRIGHT_WHITE — the visible WHITE→BRIGHT_WHITE mapping
         var key = buf.getCell(2, 1);
         assertEquals('M', key.character().charAt(0));
-        assertEquals(theme.accent(), key.fg(), "key char should render in theme accent");
+        assertEquals(AnsiColor.BRIGHT_WHITE, key.fg(),
+                "key char fg = brightened theme foreground (WHITE → BRIGHT_WHITE)");
         assertEquals(theme.background(), key.bg(), "key char bg stays theme.background");
         assertTrue(key.modifiers().contains(SGR.BOLD), "key char should be BOLD");
         assertFalse(key.modifiers().contains(SGR.DIM), "key char must not be DIM");
     }
 
     @Test
-    void multiCharKeyRendersEveryCharBoldInAccent() {
+    void multiCharKeyRendersEveryCharBoldInBrightenedForeground() {
         var panel = new MenuPanel();
         panel.addItem("Enter", "Submit");
         // keyCol = 7 ("[Enter]"): '[' at col 1, E..r at cols 2-6, ']' at col 7
         panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
         var buf = new ScreenBuffer(panel.getPreferredSize());
         panel.draw(new TextGraphics(buf));
-        var theme = ThemeManager.active();
+        // DARK test theme fg = WHITE → every key char must be BRIGHT_WHITE
         assertTrue(buf.getCell(1, 1).modifiers().contains(SGR.DIM));
         assertEquals(']', buf.getCell(7, 1).character().charAt(0));
         assertTrue(buf.getCell(7, 1).modifiers().contains(SGR.DIM));
@@ -435,8 +470,9 @@ class MenuPanelTest {
             var cell = buf.getCell(2 + c, 1);
             assertEquals(key.charAt(c), cell.character().charAt(0),
                     "char at col " + (2 + c));
-            assertEquals(theme.accent(), cell.fg(),
-                    "key char '" + key.charAt(c) + "' fg should be theme accent");
+            assertEquals(AnsiColor.BRIGHT_WHITE, cell.fg(),
+                    "key char '" + key.charAt(c)
+                            + "' fg should be brightened theme foreground");
             assertTrue(cell.modifiers().contains(SGR.BOLD),
                     "key char '" + key.charAt(c) + "' should be BOLD");
         }
@@ -477,7 +513,60 @@ class MenuPanelTest {
         assertFalse(desc.modifiers().contains(SGR.DIM));
         // Non-highlighted second row keeps the new normal styling
         assertTrue(buf.getCell(1, 2).modifiers().contains(SGR.DIM), "row 2 bracket still DIM");
-        assertEquals(theme.accent(), buf.getCell(2, 2).fg(), "row 2 key in accent");
+        assertEquals(AnsiColor.BRIGHT_WHITE, buf.getCell(2, 2).fg(),
+                "row 2 key fg = brightened foreground (DARK fg WHITE → BRIGHT_WHITE)");
         assertTrue(buf.getCell(2, 2).modifiers().contains(SGR.BOLD), "row 2 key still BOLD");
+    }
+
+    @Test
+    void yellowForegroundKeyRendersBrightYellowNotAccent() {
+        var panel = new MenuPanel();
+        panel.addItem("M", "Message Boards");
+        ThemeManager.setActive(themeWithFg(AnsiColor.YELLOW, AnsiColor.BLACK));
+        panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
+        var buf = new ScreenBuffer(panel.getPreferredSize());
+        panel.draw(new TextGraphics(buf));
+        var theme = ThemeManager.active();
+        var key = buf.getCell(2, 1);
+        assertEquals('M', key.character().charAt(0));
+        assertEquals(AnsiColor.BRIGHT_YELLOW, key.fg(),
+                "key char fg = brightened theme foreground (YELLOW → BRIGHT_YELLOW)");
+        assertTrue(key.modifiers().contains(SGR.BOLD));
+        // Only the KEY char brightens: brackets and description stay raw fg
+        assertEquals(theme.foreground(), buf.getCell(1, 1).fg(),
+                "bracket stays raw theme foreground");
+        assertTrue(buf.getCell(1, 1).modifiers().contains(SGR.DIM));
+        assertEquals(theme.foreground(), buf.getCell(9, 1).fg(),
+                "description stays raw theme foreground");
+    }
+
+    @Test
+    void rgbForegroundKeyIsScaledTowardWhite() {
+        var panel = new MenuPanel();
+        panel.addItem("M", "Message Boards");
+        ThemeManager.setActive(themeWithFg(new RgbColor(100, 200, 60), AnsiColor.BLACK));
+        panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
+        var buf = new ScreenBuffer(panel.getPreferredSize());
+        panel.draw(new TextGraphics(buf));
+        var key = buf.getCell(2, 1);
+        assertEquals('M', key.character().charAt(0));
+        // ×1.4 per channel, clamped: 100→140, 200→280→255, 60→84
+        assertEquals(new RgbColor(140, 255, 84), key.fg(),
+                "RGB foreground brightens by scaling each channel ×1.4 (clamped)");
+        assertTrue(key.modifiers().contains(SGR.BOLD));
+    }
+
+    @Test
+    void defaultForegroundPassesThroughUnbrightened() {
+        var panel = new MenuPanel();
+        panel.addItem("M", "Message Boards");
+        ThemeManager.setActive(themeWithFg(AnsiColor.DEFAULT, AnsiColor.BLACK));
+        panel.setBounds(TerminalPosition.TOP_LEFT, panel.getPreferredSize());
+        var buf = new ScreenBuffer(panel.getPreferredSize());
+        panel.draw(new TextGraphics(buf));
+        var key = buf.getCell(2, 1);
+        assertEquals('M', key.character().charAt(0));
+        assertEquals(AnsiColor.DEFAULT, key.fg(), "DEFAULT foreground is unchanged");
+        assertTrue(key.modifiers().contains(SGR.BOLD));
     }
 }

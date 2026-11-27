@@ -3,6 +3,8 @@ package io.jterm.widget;
 import io.jterm.core.TerminalSize;
 import io.jterm.graphics.TextGraphics;
 import io.jterm.style.AnsiColor;
+import io.jterm.style.Color;
+import io.jterm.style.RgbColor;
 import io.jterm.style.SGR;
 import io.jterm.style.TextCell;
 import io.jterm.style.ThemeManager;
@@ -212,7 +214,9 @@ public class MenuPanel extends AbstractComponent {
 
             // Key in brackets: "[M]" — right-padded to keyColWidth. Drawn as
             // three colored segments (Joe 2026-11-27, per-key styling): DIM
-            // brackets and the key characters bold in the theme accent.
+            // brackets and the key characters bold in the brightened theme
+            // foreground — the bright version of each theme's TEXT color
+            // (Joe 11/27 refinement), NOT the accent slot.
             // Widths/padding are unchanged: "[M]" still measures 3 columns.
             String keyInBrackets = "[" + item.key() + "]";
             int keyWidth = TerminalTextUtils.getTrueWidth(keyInBrackets);
@@ -233,11 +237,12 @@ public class MenuPanel extends AbstractComponent {
                     : new TextCell('[', theme.foreground(), theme.background(), SGR.DIM);
             var keyCharCell = highlighted
                     ? new TextCell(' ', theme.background(), theme.foreground(), SGR.BOLD)
-                    : new TextCell(' ', theme.accent(), theme.background(), SGR.BOLD);
+                    : new TextCell(' ', brighten(theme.foreground()), theme.background(), SGR.BOLD);
             graphics.drawString(colX + 1, row, " ".repeat(keyPadding), keyCell);
             graphics.drawString(bracketX, row, "[", bracketCell);
-            // Every character of the key renders in accent (multi-char keys too);
-            // drawString handles per-char column advance for double-width chars.
+            // Every character of the key renders in the brightened foreground
+            // (multi-char keys too); drawString handles per-char column
+            // advance for double-width chars.
             graphics.drawString(bracketX + 1, row, item.key(), keyCharCell);
             graphics.drawString(bracketX + keyWidth - 1, row, "]", bracketCell);
 
@@ -269,5 +274,38 @@ public class MenuPanel extends AbstractComponent {
             max = Math.max(max, w);
         }
         return max;
+    }
+
+    /**
+     * Returns the bright variant of a foreground color for menu-key emphasis
+     * (Joe 2026-11-27: key chars pop in the bright version of each theme's
+     * TEXT color, not the accent slot).
+     *
+     * <p>ANSI colors map to their BRIGHT_ counterpart (BLACK→BRIGHT_BLACK,
+     * …, WHITE→BRIGHT_WHITE); {@link AnsiColor#DEFAULT} and already-bright
+     * colors pass through unchanged. RGB colors scale each channel toward
+     * 255 by ×1.4, clamped at 255.
+     */
+    private static Color brighten(Color c) {
+        if (c instanceof AnsiColor a) {
+            return switch (a) {
+                case BLACK -> AnsiColor.BRIGHT_BLACK;
+                case RED -> AnsiColor.BRIGHT_RED;
+                case GREEN -> AnsiColor.BRIGHT_GREEN;
+                case YELLOW -> AnsiColor.BRIGHT_YELLOW;
+                case BLUE -> AnsiColor.BRIGHT_BLUE;
+                case MAGENTA -> AnsiColor.BRIGHT_MAGENTA;
+                case CYAN -> AnsiColor.BRIGHT_CYAN;
+                case WHITE -> AnsiColor.BRIGHT_WHITE;
+                default -> a; // DEFAULT and BRIGHT_* pass through unchanged
+            };
+        }
+        if (c instanceof RgbColor rgb) {
+            return new RgbColor(
+                    (int) Math.min(255, Math.round(rgb.r() * 1.4)),
+                    (int) Math.min(255, Math.round(rgb.g() * 1.4)),
+                    (int) Math.min(255, Math.round(rgb.b() * 1.4)));
+        }
+        return c;
     }
 }
